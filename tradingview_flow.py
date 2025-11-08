@@ -1,15 +1,24 @@
 import streamlit as st
 import matplotlib.pyplot as plt
 
-st.title("📊 TradingView Flow Visualizer")
+st.title("📊 TradingView Flow Visualizer (เพิ่มสีเขียว)")
 
 # ช่องให้ใส่ข้อมูล
-values_input = st.text_input("กรอกค่าตัวเลข (เช่น 8 6 5 7 9):", "8 6 5 7 9")
-colors_input = st.text_input("กรอกสี (ใช้ b = blue, r = red เช่น b r r b r):", "b r r b r")
+values_input = st.text_input("กรอกค่าตัวเลข (เช่น 8 6 5 7 9):", "8 6 5 7 9 8")
+colors_input = st.text_input("กรอกสี (ใช้ b = blue, r = red, g = green เช่น b r g b g):", "b r g b g r")
 
 # แปลงข้อมูล
 values = [float(x) for x in values_input.split()]
-colors = ['blue' if c == 'b' else 'red' for c in colors_input.split()]
+colors = []
+for c in colors_input.split():
+    if c.lower() == 'b':
+        colors.append('blue')
+    elif c.lower() == 'r':
+        colors.append('red')
+    elif c.lower() == 'g':
+        colors.append('green')
+    else:
+        colors.append('gray')  # เผื่อพิมพ์ผิดจะเป็นสีเทา
 
 # เริ่มสร้างกราฟ
 bar_width = 0.8
@@ -26,19 +35,30 @@ for i, (v, c) in enumerate(zip(values, colors)):
         prev_color = colors[i-1]
         prev_top = tops[-1]
         prev_bottom = bottoms[-1]
+
+        # ถ้าแท่งนี้เป็นน้ำเงิน (ขึ้น)
         if c == 'blue':
             bottom = prev_top if prev_color == 'blue' else prev_bottom
             top = bottom + height
-        else:
+
+        # ถ้าแท่งนี้เป็นแดง (ลง)
+        elif c == 'red':
             top = prev_top if prev_color == 'blue' else prev_bottom
             bottom = top - height
+
+        # ถ้าแท่งนี้เป็นเขียว (ขึ้นแรงกว่าเดิม)
+        elif c == 'green':
+            bottom = prev_top if prev_color in ['blue', 'green'] else prev_bottom
+            top = bottom + height * 1.2  # เพิ่มความสูงพิเศษให้สีเขียว
+
     tops.append(top)
     bottoms.append(bottom)
 
 # วาดกราฟ
 fig, ax = plt.subplots(figsize=(10,6))
 for i, (v, c, top, bottom) in enumerate(zip(values, colors, tops, bottoms)):
-    color = 'royalblue' if c == 'blue' else 'crimson'
+    color_map = {'blue': 'royalblue', 'red': 'crimson', 'green': 'limegreen'}
+    color = color_map.get(c, 'gray')
     rect = plt.Rectangle((i - bar_width/2, bottom),
                          bar_width, top - bottom,
                          color=color, ec='white', lw=0.6, alpha=0.9)
@@ -55,6 +75,6 @@ ax.grid(True, linestyle='--', color='gray', alpha=0.3)
 ax.set_xticks(range(len(values)))
 ax.set_xticklabels([str(i+1) for i in range(len(values))])
 ax.set_yticks([])
-ax.set_title("TradingView-Style Flow", color='white', fontsize=14)
+ax.set_title("TradingView-Style Flow (รองรับสีเขียว G)", color='white', fontsize=14)
 
 st.pyplot(fig)
