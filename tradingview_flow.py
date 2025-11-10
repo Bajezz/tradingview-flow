@@ -3,20 +3,20 @@ import matplotlib.pyplot as plt
 import numpy as np
 
 st.set_page_config(layout="wide")
-st.title("📊 TradingView Flow — ระบบแนวรับแนวต้านอัจฉริยะ (สวนมนุษย์)")
+st.title("📊 TradingView Flow — แนวรับแนวต้าน + สัญญาณสวนมนุษย์")
 
 # --- Input ---
-values_input = st.text_input("กรอกค่าตัวเลข (เช่น 8 6 5 7 9 8):", "8 6 5 7 9 8 10 9 11 10")
-colors_input = st.text_input("กรอกสี (b=blue, r=red, g=green เช่น b r g b g):", "b r g b g r g g r")
+values_input = st.text_input("กรอกค่าตัวเลข:", "8 6 5 7 9 8 10 9 11 10")
+colors_input = st.text_input("กรอกสี (b=blue, r=red, g=green):", "b r g b g r g g r")
 
 # --- Parse input ---
 try:
-    values = [float(x) for x in values_input.split() if x.strip() != ""]
+    values = [float(x) for x in values_input.split() if x.strip()]
 except ValueError:
     st.error("❌ กรุณากรอกค่าตัวเลขให้ถูกต้อง")
     st.stop()
 
-colors_raw = [c for c in colors_input.split() if c.strip() != ""]
+colors_raw = [c for c in colors_input.split() if c.strip()]
 if len(colors_raw) < len(values):
     colors_raw += ["gray"] * (len(values) - len(colors_raw))
 elif len(colors_raw) > len(values):
@@ -29,7 +29,7 @@ if len(values) < 3:
     st.warning("ต้องมีข้อมูลอย่างน้อย 3 ค่าเพื่อวิเคราะห์แนวรับแนวต้าน")
     st.stop()
 
-# --- เตรียมคำนวณแท่ง ---
+# --- เตรียมข้อมูลแท่ง ---
 bar_width = 0.8
 scale = 0.5
 tops, bottoms = [], []
@@ -79,25 +79,34 @@ for i, (v, c, top, bottom) in enumerate(zip(values, colors, tops, bottoms)):
 
 ax.plot(range(len(midpoints)), midpoints, color='white', linewidth=0.8, alpha=0.5)
 
-# --- แสดงแนวรับแนวต้าน ---
-for idx, level in resistance_levels:
-    ax.axhline(level, color='red', linestyle='--', linewidth=1, alpha=0.4)
-for idx, level in support_levels:
-    ax.axhline(level, color='lime', linestyle='--', linewidth=1, alpha=0.4)
+# --- แสดงแนวรับ/แนวต้าน ---
+for _, level in resistance_levels:
+    ax.axhline(level, color='red', linestyle='--', linewidth=1, alpha=0.5)
+for _, level in support_levels:
+    ax.axhline(level, color='lime', linestyle='--', linewidth=1, alpha=0.5)
 
-# --- พื้นที่สวนมนุษย์ (Contrarian Zone) ---
-current = midpoints[-1]
-nearest_res = min(resistance_levels, key=lambda x: abs(x[1] - current), default=None)
-nearest_sup = min(support_levels, key=lambda x: abs(x[1] - current), default=None)
+# --- คำนวณโซนสวนมนุษย์ ---
+current_price = midpoints[-1]
+avg_range = np.mean(np.abs(np.diff(midpoints)))  # ใช้เป็นสเกลความใกล้
+threshold = avg_range * 1.5  # ระยะที่ถือว่า “ใกล้แนวรับ/แนวต้าน”
 
-if nearest_res and abs(nearest_res[1] - current) < 0.3:
-    ax.annotate('🔻 SHORT ZONE', xy=(len(values) - 1, current),
-                xytext=(len(values) - 1, current + 0.6),
-                color='red', fontsize=13, fontweight='bold', ha='center')
-elif nearest_sup and abs(nearest_sup[1] - current) < 0.3:
-    ax.annotate('🔺 LONG ZONE', xy=(len(values) - 1, current),
-                xytext=(len(values) - 1, current - 0.6),
-                color='lime', fontsize=13, fontweight='bold', ha='center')
+nearest_res = min(resistance_levels, key=lambda x: abs(x[1] - current_price), default=None)
+nearest_sup = min(support_levels, key=lambda x: abs(x[1] - current_price), default=None)
+
+if nearest_res and abs(nearest_res[1] - current_price) < threshold:
+    ax.annotate("🔻 SHORT ZONE",
+                xy=(len(values) - 1, current_price),
+                xytext=(len(values) - 1, current_price + avg_range),
+                color='red', fontsize=16, fontweight='bold', ha='center')
+    ax.axhspan(nearest_res[1] - avg_range/2, nearest_res[1] + avg_range/2,
+               color='red', alpha=0.15)
+elif nearest_sup and abs(nearest_sup[1] - current_price) < threshold:
+    ax.annotate("🔺 LONG ZONE",
+                xy=(len(values) - 1, current_price),
+                xytext=(len(values) - 1, current_price - avg_range),
+                color='lime', fontsize=16, fontweight='bold', ha='center')
+    ax.axhspan(nearest_sup[1] - avg_range/2, nearest_sup[1] + avg_range/2,
+               color='lime', alpha=0.15)
 
 # --- ตกแต่ง ---
 ax.set_xlim(-0.5, len(values) + 0.5)
@@ -106,7 +115,7 @@ ax.set_xticklabels([str(i + 1) for i in range(len(values))], color='white')
 ax.set_yticks([])
 for spine in ax.spines.values():
     spine.set_edgecolor('#2a2f36')
-ax.set_title("Smart Support/Resistance + Contrarian Signal", color='white', fontsize=14)
+ax.set_title("Smart Support/Resistance + Contrarian Zone", color='white', fontsize=14)
 
 plt.tight_layout()
 st.pyplot(fig)
