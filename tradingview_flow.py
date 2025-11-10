@@ -2,7 +2,7 @@ import streamlit as st
 import matplotlib.pyplot as plt
 import numpy as np
 
-st.title("📊 TradingView Flow Visualizer + Predictive Signal")
+st.title("📊 TradingView Flow Visualizer + Predictive Arrow")
 
 # --- Input ---
 values_input = st.text_input("กรอกค่าตัวเลข (เช่น 8 6 5 7 9):", "8 6 5 7 9 8 10 9")
@@ -72,7 +72,7 @@ for i, (v, c, top, bottom) in enumerate(zip(values, colors, tops, bottoms)):
 midpoints = [(t + b) / 2 for t, b in zip(tops, bottoms)]
 ax.plot(range(len(midpoints)), midpoints, color='white', linewidth=0.8, alpha=0.5)
 
-# --- ลูกศรย้อนหลัง (จุดกลับตัวที่เกิดแล้ว) ---
+# --- ลูกศรย้อนหลัง (สัญญาณจริงที่เกิดแล้ว) ---
 for i in range(1, len(values) - 1):
     if values[i - 1] > values[i] < values[i + 1]:
         ax.annotate('↑', xy=(i, midpoints[i]), xytext=(i, midpoints[i] - 0.3),
@@ -88,17 +88,19 @@ y = np.array(values[-lookback:])
 a, b = np.polyfit(x, y, 1)
 
 next_value = a * lookback + b
-predicted_direction = "ขึ้น ⬆️" if next_value > y[-1] else "ลง ⬇️"
+predicted_direction = "ขึ้น" if next_value > y[-1] else "ลง"
 
-# --- วาดลูกศรพยากรณ์ล่วงหน้า ---
-ax.annotate('★', xy=(len(values) - 0.3, midpoints[-1]),
-            xytext=(len(values) - 0.3, midpoints[-1] + (0.4 if next_value > y[-1] else -0.4)),
-            color=('lime' if next_value > y[-1] else 'red'),
-            ha='center', fontsize=22, fontweight='bold')
+# --- วาดลูกศรพยากรณ์ (แท่งถัดไป) ---
+ax.annotate('↑' if predicted_direction == "ขึ้น" else '↓',
+            xy=(len(values) - 0.2, midpoints[-1]),
+            xytext=(len(values) - 0.2,
+                    midpoints[-1] + (0.4 if predicted_direction == "ขึ้น" else -0.4)),
+            color=('lime' if predicted_direction == "ขึ้น" else 'red'),
+            ha='center', fontsize=20, fontweight='bold')
 
-# --- แสดงผลบนหน้าเว็บ ---
-st.markdown(f"**🔮 พยากรณ์แท่งถัดไป:** `{next_value:.2f}`")
-st.markdown(f"**📈 สัญญาณล่วงหน้า:** {predicted_direction}")
+# --- แสดงข้อความพยากรณ์ ---
+st.markdown(f"**🔮 พยากรณ์แท่งถัดไป:** {next_value:.2f}")
+st.markdown(f"**📈 แนวโน้มล่วงหน้า:** {predicted_direction}")
 
 # --- กราฟตกแต่ง ---
 ax.set_xlim(-0.5, len(values) + 0.5)
@@ -107,6 +109,6 @@ ax.grid(True, linestyle='--', color='gray', alpha=0.3)
 ax.set_xticks(range(len(values)))
 ax.set_xticklabels([str(i + 1) for i in range(len(values))])
 ax.set_yticks([])
-ax.set_title("TradingView Flow + Predictive Signal", color='white', fontsize=14)
+ax.set_title("TradingView Flow + Predictive Arrow", color='white', fontsize=14)
 
 st.pyplot(fig)
