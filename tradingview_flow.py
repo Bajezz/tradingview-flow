@@ -3,11 +3,13 @@ import matplotlib.pyplot as plt
 import numpy as np
 
 st.set_page_config(layout="wide")
-st.title("📊 TradingView Flow — แนวรับแนวต้าน + สัญญาณสวนมนุษย์")
+st.title("📊 TradingView Flow — แนวรับแนวต้าน + โซนสวนมนุษย์ (Stable Edition)")
 
 # --- Input ---
-values_input = st.text_input("กรอกค่าตัวเลข:", "8 6 5 7 9 8 10 9 11 10")
-colors_input = st.text_input("กรอกสี (b=blue, r=red, g=green):", "b r g b g r g g r")
+values_input = st.text_area("กรอกค่าตัวเลข (เช่น 8 6 5 7 9 8 10 9 11 10):",
+                            "8 6 5 7 9 8 10 9 11 10 12 11 13 14 13 15 14 16 17 18 17 16 15 14 13")
+colors_input = st.text_area("กรอกสี (b=blue, r=red, g=green):",
+                            "b r g b g r g g r b b g b r g g g r b r g b g r g")
 
 # --- Parse input ---
 try:
@@ -54,11 +56,10 @@ for i, (v, c) in enumerate(zip(values, colors)):
     tops.append(top)
     bottoms.append(bottom)
 
-midpoints = [(t + b) / 2 for t, b in zip(tops, bottoms)]
+midpoints = np.array([(t + b) / 2 for t, b in zip(tops, bottoms)])
 
-# --- หาจุดแนวรับแนวต้านจากโครงสร้าง ---
-resistance_levels = []
-support_levels = []
+# --- หาจุดแนวรับแนวต้าน ---
+resistance_levels, support_levels = [], []
 for i in range(1, len(midpoints) - 1):
     if midpoints[i] > midpoints[i - 1] and midpoints[i] > midpoints[i + 1]:
         resistance_levels.append((i, midpoints[i]))
@@ -66,52 +67,57 @@ for i in range(1, len(midpoints) - 1):
         support_levels.append((i, midpoints[i]))
 
 # --- วาดกราฟ ---
-fig, ax = plt.subplots(figsize=(12, 6))
+fig, ax = plt.subplots(figsize=(15, 7))
 fig.patch.set_facecolor('#0e1117')
 ax.set_facecolor('#0e1117')
 
 for i, (v, c, top, bottom) in enumerate(zip(values, colors, tops, bottoms)):
     ax.add_patch(plt.Rectangle((i - bar_width / 2, bottom),
                                bar_width, top - bottom,
-                               color=c, ec='white', lw=0.6, alpha=0.9))
-    ax.text(i, (top + bottom) / 2, str(v),
-            color='white', ha='center', va='center', fontsize=11, fontweight='bold')
+                               color=c, ec='white', lw=0.5, alpha=0.9))
+    if len(values) <= 50:  # ถ้าข้อมูลเยอะไม่ต้องแสดงตัวเลข
+        ax.text(i, (top + bottom) / 2, str(v),
+                color='white', ha='center', va='center', fontsize=9)
 
 ax.plot(range(len(midpoints)), midpoints, color='white', linewidth=0.8, alpha=0.5)
 
-# --- แสดงแนวรับ/แนวต้าน ---
+# --- แสดงแนวรับแนวต้าน ---
 for _, level in resistance_levels:
-    ax.axhline(level, color='red', linestyle='--', linewidth=1, alpha=0.5)
+    ax.axhline(level, color='red', linestyle='--', linewidth=0.8, alpha=0.4)
 for _, level in support_levels:
-    ax.axhline(level, color='lime', linestyle='--', linewidth=1, alpha=0.5)
+    ax.axhline(level, color='lime', linestyle='--', linewidth=0.8, alpha=0.4)
 
-# --- คำนวณโซนสวนมนุษย์ ---
+# --- ตรวจหาโซนสวนมนุษย์ ---
 current_price = midpoints[-1]
-avg_range = np.mean(np.abs(np.diff(midpoints)))  # ใช้เป็นสเกลความใกล้
-threshold = avg_range * 1.5  # ระยะที่ถือว่า “ใกล้แนวรับ/แนวต้าน”
+if len(midpoints) > 2:
+    avg_range = np.mean(np.abs(np.diff(midpoints)))
+else:
+    avg_range = 1
+threshold = avg_range * 1.5
 
 nearest_res = min(resistance_levels, key=lambda x: abs(x[1] - current_price), default=None)
 nearest_sup = min(support_levels, key=lambda x: abs(x[1] - current_price), default=None)
 
+# ป้องกันกรณีไม่มีแนวรับแนวต้านเลย
 if nearest_res and abs(nearest_res[1] - current_price) < threshold:
     ax.annotate("🔻 SHORT ZONE",
                 xy=(len(values) - 1, current_price),
                 xytext=(len(values) - 1, current_price + avg_range),
-                color='red', fontsize=16, fontweight='bold', ha='center')
+                color='red', fontsize=14, fontweight='bold', ha='center')
     ax.axhspan(nearest_res[1] - avg_range/2, nearest_res[1] + avg_range/2,
-               color='red', alpha=0.15)
+               color='red', alpha=0.12)
 elif nearest_sup and abs(nearest_sup[1] - current_price) < threshold:
     ax.annotate("🔺 LONG ZONE",
                 xy=(len(values) - 1, current_price),
                 xytext=(len(values) - 1, current_price - avg_range),
-                color='lime', fontsize=16, fontweight='bold', ha='center')
+                color='lime', fontsize=14, fontweight='bold', ha='center')
     ax.axhspan(nearest_sup[1] - avg_range/2, nearest_sup[1] + avg_range/2,
-               color='lime', alpha=0.15)
+               color='lime', alpha=0.12)
 
 # --- ตกแต่ง ---
-ax.set_xlim(-0.5, len(values) + 0.5)
-ax.set_xticks(range(len(values)))
-ax.set_xticklabels([str(i + 1) for i in range(len(values))], color='white')
+ax.set_xlim(-0.5, len(values) - 0.5)
+ax.set_xticks(range(0, len(values), max(1, len(values)//20)))
+ax.set_xticklabels([str(i+1) for i in range(0, len(values), max(1, len(values)//20))], color='white')
 ax.set_yticks([])
 for spine in ax.spines.values():
     spine.set_edgecolor('#2a2f36')
