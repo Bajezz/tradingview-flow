@@ -2,13 +2,13 @@ import streamlit as st
 import matplotlib.pyplot as plt
 import numpy as np
 
-st.title("📊 TradingView Flow Visualizer — Persistent + Predictive Signals")
+st.title("📊 TradingView Flow Visualizer + Persistent Predictive Signals")
 
 # --- Input ---
-values_input = st.text_input("กรอกค่าตัวเลข (เช่น 8 6 5 7 9 8):", "8 6 5 7 9 8 10 9 11 10")
-colors_input = st.text_input("กรอกสี (b=blue, r=red, g=green เช่น b r g b g):", "b r g b g r g g r")
+values_input = st.text_input("กรอกค่าตัวเลข (เช่น 8 6 5 7 9):", "8 6 5 7 9 8 10 9")
+colors_input = st.text_input("กรอกสี (b=blue, r=red, g=green เช่น b r g b g):", "b r g b g r g")
 
-# --- Parse input ---
+# --- Parse inputs ---
 values = [float(x) for x in values_input.split()]
 colors_raw = colors_input.split()
 
@@ -28,7 +28,7 @@ for c in colors_raw:
     else:
         colors.append('gray')
 
-# --- Graph setup ---
+# --- Graph parameters ---
 bar_width = 0.8
 scale = 0.5
 tops, bottoms = [], []
@@ -57,31 +57,33 @@ for i, (v, c) in enumerate(zip(values, colors)):
     tops.append(top)
     bottoms.append(bottom)
 
-# --- Plot base chart ---
+midpoints = [(t + b) / 2 for t, b in zip(tops, bottoms)]
+
+# --- เริ่ม plot ---
 fig, ax = plt.subplots(figsize=(10, 6))
 color_map = {'blue': 'royalblue', 'red': 'crimson', 'green': 'limegreen'}
 
 for i, (v, c, top, bottom) in enumerate(zip(values, colors, tops, bottoms)):
     color = color_map.get(c, 'gray')
-    ax.add_patch(plt.Rectangle((i - bar_width / 2, bottom),
-                               bar_width, top - bottom,
-                               color=color, ec='white', lw=0.6, alpha=0.9))
+    rect = plt.Rectangle((i - bar_width / 2, bottom),
+                         bar_width, top - bottom,
+                         color=color, ec='white', lw=0.6, alpha=0.9)
+    ax.add_patch(rect)
     ax.text(i, (top + bottom) / 2, str(v),
-            color='white', ha='center', va='center', fontsize=11, fontweight='bold')
+            color='white', ha='center', va='center', fontsize=12, fontweight='bold')
 
-midpoints = [(t + b) / 2 for t, b in zip(tops, bottoms)]
-ax.plot(range(len(midpoints)), midpoints, color='white', linewidth=0.8, alpha=0.5)
-
-# --- สัญญาณย้อนหลัง ---
+# --- สัญญาณย้อนหลัง (จุดกลับตัวจริง) ---
 for i in range(1, len(values) - 1):
     if values[i - 1] > values[i] < values[i + 1]:
-        # จุดกลับตัวขึ้น
         ax.annotate('↑', xy=(i, midpoints[i]), xytext=(i, midpoints[i] - 0.3),
                     color='lime', ha='center', fontsize=16, fontweight='bold')
     elif values[i - 1] < values[i] > values[i + 1]:
-        # จุดกลับตัวลง
         ax.annotate('↓', xy=(i, midpoints[i]), xytext=(i, midpoints[i] + 0.3),
                     color='red', ha='center', fontsize=16, fontweight='bold')
+
+# --- สร้างที่เก็บสัญญาณใน session ---
+if "signal_history" not in st.session_state:
+    st.session_state.signal_history = []
 
 # --- พยากรณ์แท่งถัดไป ---
 lookback = min(5, len(values))
@@ -92,7 +94,24 @@ a, b = np.polyfit(x, y, 1)
 next_value = a * lookback + b
 predicted_direction = "ขึ้น" if next_value > y[-1] else "ลง"
 
-# --- วาดลูกศรพยากรณ์ (โปร่ง) ---
+# --- เก็บสัญญาณพยากรณ์ (แค่ครั้งละ 1 ครั้งเมื่อข้อมูลเปลี่ยน) ---
+if len(st.session_state.signal_history) < len(values):
+    st.session_state.signal_history.append({
+        "index": len(values) - 1,
+        "direction": predicted_direction,
+        "value": y[-1]
+    })
+
+# --- แสดงลูกศรพยากรณ์ทั้งหมด (จากประวัติ) ---
+for sig in st.session_state.signal_history:
+    color = 'lime' if sig["direction"] == "ขึ้น" else 'red'
+    offset = 0.4 if sig["direction"] == "ขึ้น" else -0.4
+    ax.annotate('↑' if sig["direction"] == "ขึ้น" else '↓',
+                xy=(sig["index"], sig["value"]),
+                xytext=(sig["index"], sig["value"] + offset),
+                color=color, ha='center', fontsize=20, fontweight='bold', alpha=0.6)
+
+# --- วาดสัญญาณใหม่ (แท่งล่าสุด) ---
 arrow_color = 'lime' if predicted_direction == "ขึ้น" else 'red'
 arrow_y = midpoints[-1] + (0.4 if predicted_direction == "ขึ้น" else -0.4)
 ax.annotate('↑' if predicted_direction == "ขึ้น" else '↓',
@@ -100,14 +119,15 @@ ax.annotate('↑' if predicted_direction == "ขึ้น" else '↓',
             xytext=(len(values), arrow_y),
             color=arrow_color, ha='center', fontsize=22, fontweight='bold', alpha=0.6)
 
-# --- เส้นต่อแนวโน้ม ---
-ax.plot([len(values)-1, len(values)],
-        [midpoints[-1], arrow_y],
-        linestyle='--', color=arrow_color, alpha=0.6)
-
 # --- แสดงข้อความ ---
 st.markdown(f"**🔮 พยากรณ์แท่งถัดไป:** {next_value:.2f}")
 st.markdown(f"**📈 แนวโน้มล่วงหน้า:** {predicted_direction}")
+
+# --- สรุปประวัติสัญญาณ ---
+if st.session_state.signal_history:
+    st.write("📜 **ประวัติสัญญาณที่ผ่านมา:**")
+    for s in st.session_state.signal_history:
+        st.write(f"• แท่งที่ {s['index']+1} → {s['direction']} (ค่า {s['value']:.2f})")
 
 # --- Styling ---
 ax.set_xlim(-0.5, len(values) + 0.8)
