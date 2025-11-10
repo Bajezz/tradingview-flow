@@ -3,13 +3,11 @@ import matplotlib.pyplot as plt
 import numpy as np
 
 st.set_page_config(layout="wide")
-st.title("📊 Flow Statistic Analyzer — Candlestick + Signal Accuracy")
+st.title("📊 TradingView Flow — ระบบสัญญาณและสถิติจริง")
 
 # --- Input ---
-values_input = st.text_area("กรอกค่าตัวเลข (เช่น 9 9 6 8 8 8 8 8 8 7 6 9 6 8 9 4 6 5 8 9 2 9 6 1 5):",
-                            "9 9 6 8 8 8 8 8 8 7 6 9 6 8 9 4 6 5 8 9 2 9 6 1 5")
-colors_input = st.text_area("กรอกสี (b=blue, r=red, g=green):",
-                            "b r b r b b b b r b r r b r r r b b b r r r b g b")
+values_input = st.text_area("กรอกค่าตัวเลข:", "9 9 6 8 8 8 8 8 8 7 6 9 6 8 9 4 6 5 8 9 2 9 6 1 5")
+colors_input = st.text_area("กรอกสี (b=blue, r=red, g=green):", "b r b r b b b b r b r r b r r r b b b r r r b g b")
 
 # --- Parse input ---
 try:
@@ -28,96 +26,118 @@ color_map = {'b': 'royalblue', 'r': 'crimson', 'g': 'limegreen'}
 colors = [color_map.get(c.lower(), 'gray') for c in colors_raw]
 
 if len(values) < 3:
-    st.warning("ต้องมีข้อมูลอย่างน้อย 3 ค่าเพื่อวิเคราะห์รูปแบบ")
+    st.warning("ต้องมีข้อมูลอย่างน้อย 3 ค่าเพื่อวิเคราะห์")
     st.stop()
 
-# --- Session เก็บสถิติ ---
+# --- เก็บข้อมูล session ---
 if "signals" not in st.session_state:
     st.session_state.signals = []
 
-# --- สร้างแท่งเทียนจำลองจากข้อมูล ---
-# ให้แต่ละค่าเป็น "close" ใช้ความต่างระหว่างจุดเป็นความสูงของแท่ง
-candles = []
-for i in range(len(values)):
-    open_ = values[i - 1] if i > 0 else values[i]
-    close = values[i]
-    high = max(open_, close) + abs(close - open_) * 0.2
-    low = min(open_, close) - abs(close - open_) * 0.2
-    candles.append((open_, high, low, close))
+# --- คำนวณกราฟ Flow (ตามโค้ดต้นฉบับของคุณ) ---
+bar_width = 0.8
+scale = 0.5
+tops, bottoms = [], []
 
-# --- วิเคราะห์จุดกลับตัว ---
-signals = []
+for i, (v, c) in enumerate(zip(values, colors)):
+    height = v * scale
+    if i == 0:
+        bottom, top = 0.0, height
+    else:
+        prev_color = colors[i - 1]
+        prev_top, prev_bottom = tops[-1], bottoms[-1]
+
+        if c == 'royalblue':
+            bottom = prev_top if prev_color == 'royalblue' else prev_bottom
+            top = bottom + height
+        elif c == 'crimson':
+            top = prev_top if prev_color == 'royalblue' else prev_bottom
+            bottom = top - height
+        elif c == 'limegreen':
+            bottom = prev_top if prev_color in ['royalblue', 'limegreen'] else prev_bottom
+            top = bottom + height * 1.2
+        else:
+            bottom, top = prev_bottom, prev_top
+
+    tops.append(top)
+    bottoms.append(bottom)
+
+midpoints = [(t + b) / 2.0 for t, b in zip(tops, bottoms)]
+
+# --- สร้างสัญญาณย้อนหลังจริง ---
 for i in range(1, len(values) - 1):
     if values[i - 1] > values[i] < values[i + 1]:
-        signals.append({"index": i, "type": "up"})
+        if not any(s["index"] == i for s in st.session_state.signals):
+            st.session_state.signals.append({"index": i, "type": "up", "correct": None})
     elif values[i - 1] < values[i] > values[i + 1]:
-        signals.append({"index": i, "type": "down"})
+        if not any(s["index"] == i for s in st.session_state.signals):
+            st.session_state.signals.append({"index": i, "type": "down", "correct": None})
 
-# --- ตรวจสอบความแม่นย้อนหลัง ---
-for s in signals:
+# --- ตรวจสอบความแม่น ---
+for s in st.session_state.signals:
     i = s["index"]
     if i < len(values) - 1:
         future_move = values[i + 1] - values[i]
-        s["correct"] = (s["type"] == "up" and future_move > 0) or \
-                       (s["type"] == "down" and future_move < 0)
-    else:
-        s["correct"] = None
+        if s["type"] == "up":
+            s["correct"] = future_move > 0
+        elif s["type"] == "down":
+            s["correct"] = future_move < 0
 
-# --- บันทึกสถิติใน session ---
-st.session_state.signals = signals
+# --- สถิติความแม่น ---
+up_acc_list = [s["correct"] for s in st.session_state.signals if s["type"] == "up" and s["correct"] is not None]
+down_acc_list = [s["correct"] for s in st.session_state.signals if s["type"] == "down" and s["correct"] is not None]
+up_acc = (sum(up_acc_list) / len(up_acc_list) * 100) if up_acc_list else 0
+down_acc = (sum(down_acc_list) / len(down_acc_list) * 100) if down_acc_list else 0
 
-# --- คำนวณความแม่น ---
-up_signals = [s for s in signals if s["type"] == "up" and s["correct"] is not None]
-down_signals = [s for s in signals if s["type"] == "down" and s["correct"] is not None]
-up_acc = (sum(s["correct"] for s in up_signals) / len(up_signals) * 100) if up_signals else 0
-down_acc = (sum(s["correct"] for s in down_signals) / len(down_signals) * 100) if down_signals else 0
+# --- พยากรณ์แท่งถัดไป (จากแนวโน้มทั้งหมด) ---
+lookback = min(len(values), 10)
+x = np.arange(lookback)
+y = np.array(values[-lookback:])
+a, b = np.polyfit(x, y, 1)
+next_value = a * lookback + b
+predicted_dir = "ขึ้น" if next_value > y[-1] else "ลง"
+arrow_color = 'lime' if predicted_dir == "ขึ้น" else 'red'
 
-# --- วาดกราฟแท่งเทียน ---
+# --- วาดกราฟ Flow + สัญญาณ ---
 fig, ax = plt.subplots(figsize=(14, 6))
 fig.patch.set_facecolor('#0e1117')
 ax.set_facecolor('#0e1117')
 
-bar_width = 0.6
-x = np.arange(len(candles))
+for i, (top, bottom, c) in enumerate(zip(tops, bottoms, colors)):
+    ax.add_patch(plt.Rectangle((i - bar_width / 2, bottom), bar_width, top - bottom,
+                               color=c, ec='white', lw=0.5, alpha=0.9))
 
-for i, (open_, high, low, close) in enumerate(candles):
-    color = colors[i]
-    ax.plot([i, i], [low, high], color=color, linewidth=1.0, alpha=0.9)
-    ax.add_patch(plt.Rectangle(
-        (i - bar_width / 2, min(open_, close)),
-        bar_width,
-        abs(close - open_),
-        color=color,
-        alpha=0.9,
-        ec='white',
-        lw=0.5
-    ))
+ax.plot(range(len(midpoints)), midpoints, color='white', linewidth=0.8, alpha=0.4)
 
-# --- วาดสัญญาณขึ้นลง ---
-for s in signals:
+# --- แสดงสัญญาณย้อนหลัง ---
+for s in st.session_state.signals:
     i = s["index"]
-    y = values[i]
-    if s["type"] == "up":
-        ax.annotate('↑', xy=(i, y), xytext=(i, y - 0.3),
-                    color='lime', ha='center', fontsize=16, fontweight='bold')
-    elif s["type"] == "down":
-        ax.annotate('↓', xy=(i, y), xytext=(i, y + 0.3),
-                    color='red', ha='center', fontsize=16, fontweight='bold')
+    if i < len(midpoints):
+        if s["type"] == "up":
+            ax.annotate('↑', xy=(i, midpoints[i]), xytext=(i, midpoints[i] - 0.35),
+                        color='lime', ha='center', fontsize=16, fontweight='bold')
+        elif s["type"] == "down":
+            ax.annotate('↓', xy=(i, midpoints[i]), xytext=(i, midpoints[i] + 0.35),
+                        color='red', ha='center', fontsize=16, fontweight='bold')
 
-# --- แสดงสถิติความแม่น ---
-ax.text(0.02, 0.95,
-        f"🔺 Up Accuracy: {up_acc:.1f}%   🔻 Down Accuracy: {down_acc:.1f}%",
-        transform=ax.transAxes,
-        color='white', fontsize=12, fontweight='bold', ha='left', va='top')
+# --- แสดงสัญญาณพยากรณ์ล่วงหน้า ---
+ax.annotate('↑' if predicted_dir == "ขึ้น" else '↓',
+            xy=(len(values), midpoints[-1]),
+            xytext=(len(values), midpoints[-1] + (0.5 if predicted_dir == "ขึ้น" else -0.5)),
+            color=arrow_color, ha='center', fontsize=20, fontweight='bold', alpha=0.7)
 
 # --- ตกแต่ง ---
-ax.set_xlim(-0.5, len(values) - 0.5)
-ax.set_xticks(range(0, len(values), max(1, len(values)//20)))
-ax.set_xticklabels([str(i+1) for i in range(0, len(values), max(1, len(values)//20))], color='white')
-ax.tick_params(axis='y', colors='white')
+ax.set_xlim(-0.5, len(values) + 0.5)
+ax.set_xticks(range(len(values)))
+ax.set_xticklabels([str(i + 1) for i in range(len(values))], color='white', fontsize=9)
+ax.tick_params(axis='x', colors='white')
+ax.set_yticks([])
 for spine in ax.spines.values():
     spine.set_edgecolor('#2a2f36')
 
-ax.set_title("📈 Candlestick Flow + Signal Accuracy Tracker", color='white', fontsize=14)
+ax.text(len(values) - 1, max(tops) * 1.05,
+        f"📈 Up: {up_acc:.1f}%   📉 Down: {down_acc:.1f}%",
+        color='white', ha='right', va='top', fontsize=12)
+
+ax.set_title("TradingView Flow — สัญญาณจริงและความแม่น", color='white', fontsize=14)
 plt.tight_layout()
 st.pyplot(fig)
