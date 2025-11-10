@@ -10,8 +10,16 @@ colors_input = st.text_input("กรอกสี (b=blue, r=red, g=green เช�
 
 # --- Parse inputs ---
 values = [float(x) for x in values_input.split()]
+colors_raw = colors_input.split()
+
+# ถ้าใส่สีน้อยกว่าค่าตัวเลข จะเติมสีเทาให้ครบ
+if len(colors_raw) < len(values):
+    colors_raw += ["gray"] * (len(values) - len(colors_raw))
+elif len(colors_raw) > len(values):
+    colors_raw = colors_raw[:len(values)]  # ตัดส่วนเกินออก
+
 colors = []
-for c in colors_input.split():
+for c in colors_raw:
     if c.lower() == 'b':
         colors.append('blue')
     elif c.lower() == 'r':
@@ -50,6 +58,11 @@ for i, (v, c) in enumerate(zip(values, colors)):
     tops.append(top)
     bottoms.append(bottom)
 
+# --- ถ้าไม่มีข้อมูล ---
+if not tops or not bottoms:
+    st.warning("⚠️ โปรดกรอกค่าตัวเลขอย่างน้อย 2 ค่า")
+    st.stop()
+
 # --- สร้างกราฟ ---
 fig, ax = plt.subplots(figsize=(10, 6))
 
@@ -63,8 +76,12 @@ for i, (v, c, top, bottom) in enumerate(zip(values, colors, tops, bottoms)):
     ax.text(i, (top + bottom) / 2, str(v),
             color='white', ha='center', va='center', fontsize=12, fontweight='bold')
 
+# --- คำนวณ midpoints ให้ยาวเท่ากับจำนวน values ---
 midpoints = [(t + b) / 2 for t, b in zip(tops, bottoms)]
-ax.plot(range(len(values)), midpoints, color='white', linewidth=0.8, alpha=0.5)
+if len(midpoints) != len(values):
+    midpoints = midpoints[:len(values)]
+
+ax.plot(range(len(midpoints)), midpoints, color='white', linewidth=0.8, alpha=0.5)
 
 # --- ลูกศรสัญญาณขึ้น-ลง ---
 for i in range(1, len(values) - 1):
@@ -78,11 +95,11 @@ for i in range(1, len(values) - 1):
 # --- พยากรณ์ค่าถัดไป (ไม่ใช้ sklearn) ---
 x = np.arange(len(values))
 y = np.array(values)
-a, b = np.polyfit(x, y, 1)  # linear regression (manual)
+a, b = np.polyfit(x, y, 1)
 next_value = a * len(values) + b
 direction = "📈 แนวโน้มขึ้น" if a > 0 else "📉 แนวโน้มลง"
 
-# --- Display prediction result ---
+# --- แสดงผล ---
 st.markdown(f"**🔮 ค่าพยากรณ์ถัดไป:** `{next_value:.2f}`")
 st.markdown(f"**📊 ทิศทางแนวโน้ม:** {direction}")
 
