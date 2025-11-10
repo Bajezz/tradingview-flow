@@ -2,9 +2,8 @@ import streamlit as st
 import matplotlib.pyplot as plt
 import numpy as np
 from collections import Counter
-from sklearn.linear_model import LinearRegression
 
-st.title("📊 TradingView Flow Visualizer + Pattern Analyzer + ML Forecast")
+st.title("📊 TradingView Flow Visualizer + Pattern Analyzer + ML Forecast (No sklearn)")
 
 # ช่องให้ใส่ข้อมูล
 values_input = st.text_input("กรอกค่าตัวเลข (เช่น 8 6 5 7 9):", "8 6 5 7 9 8")
@@ -70,7 +69,7 @@ ax.grid(True, linestyle='--', color='gray', alpha=0.3)
 ax.set_xticks(range(len(values)))
 ax.set_xticklabels([str(i+1) for i in range(len(values))])
 ax.set_yticks([])
-ax.set_title("TradingView-Style Flow + ML Forecast", color='white', fontsize=14)
+ax.set_title("TradingView-Style Flow + Forecast (No sklearn)", color='white', fontsize=14)
 st.pyplot(fig)
 
 # --- 🔍 ส่วนวิเคราะห์สัญญาณ ---
@@ -108,21 +107,19 @@ if last_color in transitions:
 else:
     st.write("ยังไม่มีข้อมูลพอสำหรับการทำนายสีถัดไป")
 
-# 4. Machine Learning Forecast (Linear Regression)
-st.subheader("🤖 พยากรณ์ค่าถัดไปด้วย Machine Learning")
+# 4. Machine Learning Forecast (คำนวณเอง ไม่ใช้ sklearn)
+st.subheader("🤖 พยากรณ์ค่าถัดไป (Linear Regression Manual)")
 
-X = np.arange(len(values)).reshape(-1, 1)
+x = np.arange(len(values))
 y = np.array(values)
 
 if len(values) >= 3:
-    model = LinearRegression()
-    model.fit(X, y)
-    next_index = np.array([[len(values)]])
-    next_value = model.predict(next_index)[0]
+    # ใช้ polyfit หาเส้นตรง y = a*x + b
+    a, b = np.polyfit(x, y, 1)
+    next_value = a * len(values) + b
 
     st.write(f"🔮 ค่าที่คาดว่าจะเกิดถัดไป: **{next_value:.2f}**")
 
-    # แปลผลแนวโน้ม
     if next_value > values[-1]:
         st.success("✅ คาดว่าแนวโน้มยัง 'ขึ้น' ต่อเนื่อง")
     elif next_value < values[-1]:
@@ -130,13 +127,13 @@ if len(values) >= 3:
     else:
         st.info("🔄 คาดว่าแนวโน้มคงที่")
 else:
-    st.info("ต้องมีข้อมูลอย่างน้อย 3 จุดเพื่อให้ AI พยากรณ์")
+    st.info("ต้องมีข้อมูลอย่างน้อย 3 จุดเพื่อให้พยากรณ์ได้")
 
-# 5. สัญญาณพิเศษรวม
+# 5. สรุปสัญญาณรวม
 st.subheader("📊 สรุปสัญญาณรวม")
-if trend == "ขึ้น" and next_color in ['blue', 'green']:
-    st.success("แนวโน้มแข็งแรง และ AI คาดว่าจะขึ้นต่อ ✅")
-elif trend == "ลง" and next_color == 'red':
+if trend == "ขึ้น" and (last_color in ['blue', 'green']):
+    st.success("แนวโน้มแข็งแรง และคาดว่าจะขึ้นต่อ ✅")
+elif trend == "ลง" and last_color == 'red':
     st.warning("แนวโน้มขาลงต่อเนื่อง ⚠️")
 else:
     st.info("สัญญาณผสม อาจเข้าสู่ช่วงเปลี่ยนทิศ 🔄")
