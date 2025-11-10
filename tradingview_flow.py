@@ -37,9 +37,9 @@ if len(values) < 3:
     st.warning("ต้องกรอกข้อมูลอย่างน้อย 3 ค่าเพื่อเริ่มเก็บสถิติ")
     st.stop()
 
-# --- สร้าง session_state สำหรับเก็บสัญญาณ ---
+# --- เก็บข้อมูลใน session ---
 if "signals" not in st.session_state:
-    st.session_state.signals = []  # [{'index': i, 'type': 'up'/'down', 'correct': True/False}]
+    st.session_state.signals = []
 if "accuracy" not in st.session_state:
     st.session_state.accuracy = {"up": [], "down": []}
 
@@ -73,33 +73,33 @@ for i, (v, c) in enumerate(zip(values, colors)):
 
 midpoints = [(t + b) / 2.0 for t, b in zip(tops, bottoms)]
 
-# --- สร้างสัญญาณย้อนหลังจริง ---
+# --- ตรวจหา “จุดสัญญาณย้อนหลังจริง” ---
 for i in range(1, len(values) - 1):
     if values[i - 1] > values[i] < values[i + 1]:
-        st.session_state.signals.append({'index': i, 'type': 'up', 'correct': None})
+        if not any(s["index"] == i for s in st.session_state.signals):
+            st.session_state.signals.append({"index": i, "type": "up", "correct": None})
     elif values[i - 1] < values[i] > values[i + 1]:
-        st.session_state.signals.append({'index': i, 'type': 'down', 'correct': None})
+        if not any(s["index"] == i for s in st.session_state.signals):
+            st.session_state.signals.append({"index": i, "type": "down", "correct": None})
 
-# --- ประเมินความแม่นของสัญญาณย้อนหลัง (จริง) ---
+# --- ตรวจสอบความแม่นยำของสัญญาณ ---
 for s in st.session_state.signals:
-    i = s['index']
-    if i < len(values) - 1:  # ต้องมีแท่งถัดไปให้เปรียบเทียบ
+    i = s["index"]
+    if i < len(values) - 1:
         future_move = values[i + 1] - values[i]
-        if s['type'] == 'up':
-            s['correct'] = future_move > 0
-            st.session_state.accuracy["up"].append(s['correct'])
-        elif s['type'] == 'down':
-            s['correct'] = future_move < 0
-            st.session_state.accuracy["down"].append(s['correct'])
+        if s["type"] == "up":
+            s["correct"] = future_move > 0
+        elif s["type"] == "down":
+            s["correct"] = future_move < 0
 
-# --- สรุปความแม่น ---
-def calc_acc(lst):
-    return (sum(lst) / len(lst) * 100) if len(lst) > 0 else 0
+# --- บันทึกสถิติความแม่น ---
+up_acc_list = [s["correct"] for s in st.session_state.signals if s["type"] == "up" and s["correct"] is not None]
+down_acc_list = [s["correct"] for s in st.session_state.signals if s["type"] == "down" and s["correct"] is not None]
 
-up_acc = calc_acc(st.session_state.accuracy["up"])
-down_acc = calc_acc(st.session_state.accuracy["down"])
+up_acc = (sum(up_acc_list) / len(up_acc_list) * 100) if len(up_acc_list) else 0
+down_acc = (sum(down_acc_list) / len(down_acc_list) * 100) if len(down_acc_list) else 0
 
-# --- สร้างกราฟ ---
+# --- วาดกราฟ ---
 fig, ax = plt.subplots(figsize=(12, 6))
 fig.patch.set_facecolor('#0e1117')
 ax.set_facecolor('#0e1117')
@@ -115,18 +115,19 @@ for i, (v, c, top, bottom) in enumerate(zip(values, colors, tops, bottoms)):
 
 ax.plot(range(len(midpoints)), midpoints, color='white', linewidth=0.8, alpha=0.5)
 
-# --- วาดสัญญาณย้อนหลังจริง ---
+# --- แสดงสัญญาณย้อนหลัง ---
 for s in st.session_state.signals:
-    i = s['index']
-    if s['type'] == 'up':
-        ax.annotate('↑', xy=(i, midpoints[i]), xytext=(i, midpoints[i] - 0.35),
-                    color='lime', ha='center', fontsize=16, fontweight='bold')
-    elif s['type'] == 'down':
-        ax.annotate('↓', xy=(i, midpoints[i]), xytext=(i, midpoints[i] + 0.35),
-                    color='red', ha='center', fontsize=16, fontweight='bold')
+    i = s["index"]
+    if i < len(midpoints):  # ✅ ป้องกัน IndexError
+        if s["type"] == "up":
+            ax.annotate('↑', xy=(i, midpoints[i]), xytext=(i, midpoints[i] - 0.35),
+                        color='lime', ha='center', fontsize=16, fontweight='bold')
+        elif s["type"] == "down":
+            ax.annotate('↓', xy=(i, midpoints[i]), xytext=(i, midpoints[i] + 0.35),
+                        color='red', ha='center', fontsize=16, fontweight='bold')
 
 # --- พยากรณ์แท่งถัดไป ---
-lookback = min(5, len(values))
+lookback = min(len(values), 10)  # ใช้ข้อมูลทั้งหมดล่าสุด (ไม่ใช่แค่ 5)
 x = np.arange(lookback)
 y = np.array(values[-lookback:])
 a, b = np.polyfit(x, y, 1)
@@ -137,7 +138,7 @@ arrow_color = 'lime' if predicted_dir == "ขึ้น" else 'red'
 ax.annotate('↑' if predicted_dir == "ขึ้น" else '↓',
             xy=(len(values), midpoints[-1]),
             xytext=(len(values), midpoints[-1] + (0.5 if predicted_dir == "ขึ้น" else -0.5)),
-            color=arrow_color, ha='center', fontsize=20, fontweight='bold', alpha=0.6)
+            color=arrow_color, ha='center', fontsize=20, fontweight='bold', alpha=0.7)
 
 # --- ตกแต่ง ---
 ax.set_xlim(-0.5, len(values) + 0.5)
@@ -147,9 +148,9 @@ ax.set_yticks([])
 ax.tick_params(axis='x', colors='white')
 for spine in ax.spines.values():
     spine.set_edgecolor('#2a2f36')
-ax.set_title("TradingView Flow — Real Accuracy Memory", color='white', fontsize=14)
+ax.set_title("TradingView Flow — สถิติความแม่นของสัญญาณ", color='white', fontsize=14)
 
-# --- แสดงสถิติบนกราฟ (ไม่ใช้ข้อความล่าง) ---
+# --- แสดงสถิติ ---
 ax.text(len(values) - 1, max(tops) * 1.05,
         f"📈 Up Accuracy: {up_acc:.1f}%\n📉 Down Accuracy: {down_acc:.1f}%",
         color='white', ha='right', va='top', fontsize=11)
