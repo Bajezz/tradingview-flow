@@ -3,7 +3,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 
 st.set_page_config(layout="wide")
-st.title("📊 TradingView Flow — สถิติความแม่นของสัญญาณจริง")
+st.title("📊 TradingView Flow — สถิติความแม่นของสัญญาณจริง + สวนมนุษย์")
 
 # --- Input ---
 values_input = st.text_input("กรอกค่าตัวเลข (เช่น 8 6 5 7 9 8):", "8 6 5 7 9 8 10 9 11 10")
@@ -37,11 +37,13 @@ if len(values) < 3:
     st.warning("ต้องกรอกข้อมูลอย่างน้อย 3 ค่าเพื่อเริ่มเก็บสถิติ")
     st.stop()
 
-# --- เก็บข้อมูลใน session ---
+# --- Session State ---
 if "signals" not in st.session_state:
     st.session_state.signals = []
+if "contrarian_signals" not in st.session_state:
+    st.session_state.contrarian_signals = []
 if "accuracy" not in st.session_state:
-    st.session_state.accuracy = {"up": [], "down": []}
+    st.session_state.accuracy = {"up": [], "down": [], "contra": []}
 
 # --- คำนวณกราฟ ---
 bar_width = 0.8
@@ -73,7 +75,7 @@ for i, (v, c) in enumerate(zip(values, colors)):
 
 midpoints = [(t + b) / 2.0 for t, b in zip(tops, bottoms)]
 
-# --- ตรวจหา “จุดสัญญาณย้อนหลังจริง” ---
+# --- สัญญาณย้อนหลังจริง ---
 for i in range(1, len(values) - 1):
     if values[i - 1] > values[i] < values[i + 1]:
         if not any(s["index"] == i for s in st.session_state.signals):
@@ -82,7 +84,7 @@ for i in range(1, len(values) - 1):
         if not any(s["index"] == i for s in st.session_state.signals):
             st.session_state.signals.append({"index": i, "type": "down", "correct": None})
 
-# --- ตรวจสอบความแม่นยำของสัญญาณ ---
+# --- ความแม่นสัญญาณจริง ---
 for s in st.session_state.signals:
     i = s["index"]
     if i < len(values) - 1:
@@ -92,12 +94,39 @@ for s in st.session_state.signals:
         elif s["type"] == "down":
             s["correct"] = future_move < 0
 
-# --- บันทึกสถิติความแม่น ---
+# --- Contrarian Layer ---
+ma_window = 3
+if len(values) >= ma_window:
+    ma = np.convolve(values, np.ones(ma_window)/ma_window, mode='valid')
+    for i in range(ma_window-1, len(values)):
+        diff = values[i] - ma[i - ma_window + 1]
+        if diff > 0.6:  # ขึ้นแรงเกิน → คนโลภ → สวนลง
+            sig_type = 'down'
+        elif diff < -0.6:  # ลงแรงเกิน → คนกลัว → สวนขึ้น
+            sig_type = 'up'
+        else:
+            continue
+        if not any(s["index"] == i for s in st.session_state.contrarian_signals):
+            st.session_state.contrarian_signals.append({"index": i, "type": sig_type, "correct": None})
+
+# --- ความแม่นสัญญาณสวน ---
+for s in st.session_state.contrarian_signals:
+    i = s["index"]
+    if i < len(values) - 1:
+        future_move = values[i + 1] - values[i]
+        if s["type"] == "up":
+            s["correct"] = future_move > 0
+        elif s["type"] == "down":
+            s["correct"] = future_move < 0
+
+# --- สรุปสถิติ ---
 up_acc_list = [s["correct"] for s in st.session_state.signals if s["type"] == "up" and s["correct"] is not None]
 down_acc_list = [s["correct"] for s in st.session_state.signals if s["type"] == "down" and s["correct"] is not None]
+contra_acc_list = [s["correct"] for s in st.session_state.contrarian_signals if s["correct"] is not None]
 
 up_acc = (sum(up_acc_list) / len(up_acc_list) * 100) if len(up_acc_list) else 0
 down_acc = (sum(down_acc_list) / len(down_acc_list) * 100) if len(down_acc_list) else 0
+contra_acc = (sum(contra_acc_list) / len(contra_acc_list) * 100) if len(contra_acc_list) else 0
 
 # --- วาดกราฟ ---
 fig, ax = plt.subplots(figsize=(12, 6))
@@ -115,10 +144,10 @@ for i, (v, c, top, bottom) in enumerate(zip(values, colors, tops, bottoms)):
 
 ax.plot(range(len(midpoints)), midpoints, color='white', linewidth=0.8, alpha=0.5)
 
-# --- แสดงสัญญาณย้อนหลัง ---
+# --- สัญญาณปกติ ---
 for s in st.session_state.signals:
     i = s["index"]
-    if i < len(midpoints):  # ✅ ป้องกัน IndexError
+    if i < len(midpoints):
         if s["type"] == "up":
             ax.annotate('↑', xy=(i, midpoints[i]), xytext=(i, midpoints[i] - 0.35),
                         color='lime', ha='center', fontsize=16, fontweight='bold')
@@ -126,8 +155,16 @@ for s in st.session_state.signals:
             ax.annotate('↓', xy=(i, midpoints[i]), xytext=(i, midpoints[i] + 0.35),
                         color='red', ha='center', fontsize=16, fontweight='bold')
 
+# --- สัญญาณสวนมนุษย์ ---
+for s in st.session_state.contrarian_signals:
+    i = s["index"]
+    if i < len(midpoints):
+        ax.annotate('⚡', xy=(i, midpoints[i]),
+                    xytext=(i, midpoints[i] + 0.6 if s["type"] == "down" else midpoints[i] - 0.6),
+                    color='yellow', ha='center', fontsize=14, fontweight='bold')
+
 # --- พยากรณ์แท่งถัดไป ---
-lookback = min(len(values), 10)  # ใช้ข้อมูลทั้งหมดล่าสุด (ไม่ใช่แค่ 5)
+lookback = min(len(values), 10)
 x = np.arange(lookback)
 y = np.array(values[-lookback:])
 a, b = np.polyfit(x, y, 1)
@@ -148,11 +185,11 @@ ax.set_yticks([])
 ax.tick_params(axis='x', colors='white')
 for spine in ax.spines.values():
     spine.set_edgecolor('#2a2f36')
-ax.set_title("TradingView Flow — สถิติความแม่นของสัญญาณ", color='white', fontsize=14)
+ax.set_title("TradingView Flow — สัญญาณจริง + สัญญาณสวนมนุษย์", color='white', fontsize=14)
 
 # --- แสดงสถิติ ---
 ax.text(len(values) - 1, max(tops) * 1.05,
-        f"📈 Up Accuracy: {up_acc:.1f}%\n📉 Down Accuracy: {down_acc:.1f}%",
+        f"📈 Up: {up_acc:.1f}% | 📉 Down: {down_acc:.1f}% | ⚡สวน: {contra_acc:.1f}%",
         color='white', ha='right', va='top', fontsize=11)
 
 plt.tight_layout()
