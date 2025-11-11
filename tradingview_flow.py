@@ -1,25 +1,29 @@
-import streamlit as st
-import matplotlib.pyplot as plt
-import numpy as np
 import gspread
 from google.oauth2.service_account import Credentials
-import json
-from datetime import datetime
+import streamlit as st
 
-# ==============================================================
-# 🔗 เชื่อมต่อ Google Sheets (ใช้ secrets)
-# ==============================================================
+# ✅ กำหนด Scope ให้ถูกต้อง
+scope = ["https://www.googleapis.com/auth/spreadsheets"]
 
+# ✅ โหลดข้อมูล service account จาก secrets (ใน Streamlit Cloud)
+creds = Credentials.from_service_account_info(
+    st.secrets["gcp_service_account"],
+    scopes=scope
+)
+
+# ✅ เชื่อมต่อ Google Sheets
+client = gspread.authorize(creds)
+
+# ✅ เปิดชีตที่ต้องการ
+sheet = client.open("TradingView_Signals").sheet1
+
+# ✅ ทดสอบการเชื่อมต่อ
 try:
-    creds_dict = st.secrets["gcp_service_account"]
-    creds = Credentials.from_service_account_info(dict(creds_dict))
-    gc = gspread.authorize(creds)
-   sheet = client.open("TradingView_Signals").sheet1
-    st.session_state["gsheet_connected"] = True
+    sheet.append_row(["✅ เชื่อมต่อสำเร็จ"])
+    st.success("เชื่อม Google Sheets สำเร็จ!")
 except Exception as e:
-    st.warning(f"⚠️ ไม่สามารถเชื่อม Google Sheets ได้: {e}")
-    sheet = None
-    st.session_state["gsheet_connected"] = False
+    st.error(f"❌ ไม่สามารถเชื่อม Google Sheets ได้: {e}")
+
 
 # ==============================================================
 # ⚙️ ตั้งค่า Streamlit
@@ -206,4 +210,5 @@ ax.text(len(values) - 1, max(tops) * 1.05,
 ax.set_title("TradingView Flow — สัญญาณล่วงหน้าและสถิติจริง", color='white', fontsize=14)
 plt.tight_layout()
 st.pyplot(fig)
+
 
