@@ -14,7 +14,7 @@ try:
     creds_dict = st.secrets["gcp_service_account"]
     creds = Credentials.from_service_account_info(dict(creds_dict))
     gc = gspread.authorize(creds)
-    sheet = gc.open("TradingView_Flow_Stats").sheet1  # 👈 เปลี่ยนชื่อไฟล์ได้
+   sheet = client.open("TradingView_Signals").sheet1
     st.session_state["gsheet_connected"] = True
 except Exception as e:
     st.warning(f"⚠️ ไม่สามารถเชื่อม Google Sheets ได้: {e}")
@@ -206,3 +206,4 @@ ax.text(len(values) - 1, max(tops) * 1.05,
 ax.set_title("TradingView Flow — สัญญาณล่วงหน้าและสถิติจริง", color='white', fontsize=14)
 plt.tight_layout()
 st.pyplot(fig)
+
