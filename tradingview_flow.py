@@ -1,29 +1,34 @@
+import streamlit as st
+import matplotlib.pyplot as plt
+import numpy as np
 import gspread
 from google.oauth2.service_account import Credentials
-import streamlit as st
+from datetime import datetime  # ✅ ต้องมี
 
-# ✅ กำหนด Scope ให้ถูกต้อง
+# ==============================================================
+# 🔗 เชื่อมต่อ Google Sheets
+# ==============================================================
+
 scope = ["https://www.googleapis.com/auth/spreadsheets"]
 
-# ✅ โหลดข้อมูล service account จาก secrets (ใน Streamlit Cloud)
-creds = Credentials.from_service_account_info(
-    st.secrets["gcp_service_account"],
-    scopes=scope
-)
-
-# ✅ เชื่อมต่อ Google Sheets
-client = gspread.authorize(creds)
-
-# ✅ เปิดชีตที่ต้องการ
-sheet = client.open("TradingView_Signals").sheet1
-
-# ✅ ทดสอบการเชื่อมต่อ
 try:
-    sheet.append_row(["✅ เชื่อมต่อสำเร็จ"])
-    st.success("เชื่อม Google Sheets สำเร็จ!")
-except Exception as e:
-    st.error(f"❌ ไม่สามารถเชื่อม Google Sheets ได้: {e}")
+    creds = Credentials.from_service_account_info(
+        st.secrets["gcp_service_account"],
+        scopes=scope
+    )
+    client = gspread.authorize(creds)
+    # ✅ แก้ชื่อชีตให้ตรงกับของคุณ
+    sheet = client.open("TradingView_Signals").sheet1
 
+    # ทดสอบการเชื่อมต่อ
+    sheet.append_row(["✅ Streamlit Connected", datetime.now().strftime("%Y-%m-%d %H:%M:%S")])
+    st.success("✅ เชื่อม Google Sheets สำเร็จ!")
+    st.session_state["gsheet_connected"] = True
+
+except Exception as e:
+    st.warning(f"⚠️ ไม่สามารถเชื่อม Google Sheets ได้: {e}")
+    sheet = None
+    st.session_state["gsheet_connected"] = False
 
 # ==============================================================
 # ⚙️ ตั้งค่า Streamlit
@@ -138,16 +143,17 @@ if len(values) >= 3:
 # 💾 บันทึกลง Google Sheets
 # ==============================================================
 
-if sheet and st.session_state["gsheet_connected"]:
+if st.session_state["gsheet_connected"]:
     try:
         sheet.append_row([
             datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-            str(values[-5:]),  # เก็บค่าล่าสุด 5 จุด
+            str(values[-5:]),
             predicted_dir,
             anticipate_signal if anticipate_signal else "-",
             f"{up_acc:.1f}%",
             f"{down_acc:.1f}%"
         ])
+        st.success("✅ บันทึกข้อมูลลง Google Sheets สำเร็จ!")
     except Exception as e:
         st.warning(f"⚠️ บันทึกข้อมูลไม่สำเร็จ: {e}")
 
@@ -194,7 +200,6 @@ ax.annotate('↑' if predicted_dir == "up" else '↓',
             color='lime' if predicted_dir == "up" else 'red',
             ha='center', fontsize=22, fontweight='bold', alpha=0.7)
 
-# --- ตกแต่ง ---
 ax.set_xlim(-0.5, len(values) + 0.5)
 ax.set_xticks(range(len(values)))
 ax.set_xticklabels([str(i + 1) for i in range(len(values))], color='white', fontsize=9)
@@ -210,5 +215,3 @@ ax.text(len(values) - 1, max(tops) * 1.05,
 ax.set_title("TradingView Flow — สัญญาณล่วงหน้าและสถิติจริง", color='white', fontsize=14)
 plt.tight_layout()
 st.pyplot(fig)
-
-
