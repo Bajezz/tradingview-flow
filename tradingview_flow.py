@@ -1,15 +1,40 @@
 import streamlit as st
 import matplotlib.pyplot as plt
 import numpy as np
+import gspread
+from google.oauth2.service_account import Credentials
+import json
+from datetime import datetime
+
+# ==============================================================
+# 🔗 เชื่อมต่อ Google Sheets (ใช้ secrets)
+# ==============================================================
+
+try:
+    creds_dict = st.secrets["gcp_service_account"]
+    creds = Credentials.from_service_account_info(dict(creds_dict))
+    gc = gspread.authorize(creds)
+    sheet = gc.open("TradingView_Flow_Stats").sheet1  # 👈 เปลี่ยนชื่อไฟล์ได้
+    st.session_state["gsheet_connected"] = True
+except Exception as e:
+    st.warning(f"⚠️ ไม่สามารถเชื่อม Google Sheets ได้: {e}")
+    sheet = None
+    st.session_state["gsheet_connected"] = False
+
+# ==============================================================
+# ⚙️ ตั้งค่า Streamlit
+# ==============================================================
 
 st.set_page_config(layout="wide")
 st.title("📊 TradingView Flow — ระบบสัญญาณและสถิติจริง (ล่วงหน้า)")
 
-# --- Input ---
+# ==============================================================
+# 🧮 รับข้อมูลจากผู้ใช้
+# ==============================================================
+
 values_input = st.text_area("กรอกค่าตัวเลข:", "9 9 6 8 8 8 8 8 8 7 6 9 6 8 9 4 6 5 8 9 2 9 6 1 5")
 colors_input = st.text_area("กรอกสี (b=blue, r=red, g=green):", "b r b r b b b b r b r r b r r r b b b r r r b g b")
 
-# --- Parse input ---
 try:
     values = [float(x) for x in values_input.split() if x.strip()]
 except ValueError:
@@ -29,11 +54,13 @@ if len(values) < 3:
     st.warning("ต้องมีข้อมูลอย่างน้อย 3 ค่าเพื่อวิเคราะห์")
     st.stop()
 
-# --- Session ---
+# ==============================================================
+# 📈 คำนวณกราฟและสัญญาณ
+# ==============================================================
+
 if "signals" not in st.session_state:
     st.session_state.signals = []
 
-# --- Flow Graph Calculation ---
 bar_width = 0.8
 scale = 0.5
 tops, bottoms = [], []
@@ -61,7 +88,7 @@ for i, (v, c) in enumerate(zip(values, colors)):
 
 midpoints = [(t + b) / 2.0 for t, b in zip(tops, bottoms)]
 
-# --- สร้างสัญญาณย้อนหลังจริง ---
+# --- สร้างสัญญาณย้อนหลัง ---
 for i in range(1, len(values) - 1):
     if values[i - 1] > values[i] < values[i + 1]:
         if not any(s["index"] == i for s in st.session_state.signals):
@@ -80,13 +107,13 @@ for s in st.session_state.signals:
         elif s["type"] == "down":
             s["correct"] = future_move < 0
 
-# --- ความแม่นย้อนหลัง ---
+# --- คำนวณเปอร์เซ็นต์ความแม่น ---
 up_acc_list = [s["correct"] for s in st.session_state.signals if s["type"] == "up" and s["correct"] is not None]
 down_acc_list = [s["correct"] for s in st.session_state.signals if s["type"] == "down" and s["correct"] is not None]
 up_acc = (sum(up_acc_list) / len(up_acc_list) * 100) if up_acc_list else 0
 down_acc = (sum(down_acc_list) / len(down_acc_list) * 100) if down_acc_list else 0
 
-# --- พยากรณ์แท่งถัดไปจากแนวโน้มล่าสุด ---
+# --- พยากรณ์แท่งถัดไป ---
 lookback = min(len(values), 6)
 x = np.arange(lookback)
 y = np.array(values[-lookback:])
@@ -94,7 +121,7 @@ a, b = np.polyfit(x, y, 1)
 next_value = a * lookback + b
 predicted_dir = "up" if next_value > y[-1] else "down"
 
-# --- พยากรณ์ “ล่วงหน้า” ของแท่งปัจจุบัน ---
+# --- สัญญาณล่วงหน้าแท่งล่าสุด ---
 anticipate_signal = None
 if len(values) >= 3:
     last3 = values[-3:]
@@ -103,7 +130,27 @@ if len(values) >= 3:
     elif last3[0] < last3[1] > last3[2]:
         anticipate_signal = "down"
 
-# --- วาดกราฟ ---
+# ==============================================================
+# 💾 บันทึกลง Google Sheets
+# ==============================================================
+
+if sheet and st.session_state["gsheet_connected"]:
+    try:
+        sheet.append_row([
+            datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+            str(values[-5:]),  # เก็บค่าล่าสุด 5 จุด
+            predicted_dir,
+            anticipate_signal if anticipate_signal else "-",
+            f"{up_acc:.1f}%",
+            f"{down_acc:.1f}%"
+        ])
+    except Exception as e:
+        st.warning(f"⚠️ บันทึกข้อมูลไม่สำเร็จ: {e}")
+
+# ==============================================================
+# 🎨 วาดกราฟ
+# ==============================================================
+
 fig, ax = plt.subplots(figsize=(14, 6))
 fig.patch.set_facecolor('#0e1117')
 ax.set_facecolor('#0e1117')
@@ -126,7 +173,7 @@ for s in st.session_state.signals:
             ax.annotate('↓', xy=(i, midpoints[i]), xytext=(i, midpoints[i] + 0.35),
                         color='red', ha='center', fontsize=16, fontweight='bold')
 
-# --- แสดงสัญญาณล่วงหน้าแท่งปัจจุบัน ---
+# --- แสดงสัญญาณล่วงหน้า ---
 if anticipate_signal:
     i = len(values) - 1
     if anticipate_signal == "up":
@@ -136,7 +183,7 @@ if anticipate_signal:
         ax.annotate('↓', xy=(i, midpoints[i]), xytext=(i, midpoints[i] + 0.5),
                     color='orange', ha='center', fontsize=20, fontweight='bold', alpha=0.8)
 
-# --- แสดงพยากรณ์แท่งถัดไป ---
+# --- พยากรณ์แท่งถัดไป ---
 ax.annotate('↑' if predicted_dir == "up" else '↓',
             xy=(len(values), midpoints[-1]),
             xytext=(len(values), midpoints[-1] + (0.5 if predicted_dir == "up" else -0.5)),
@@ -159,7 +206,3 @@ ax.text(len(values) - 1, max(tops) * 1.05,
 ax.set_title("TradingView Flow — สัญญาณล่วงหน้าและสถิติจริง", color='white', fontsize=14)
 plt.tight_layout()
 st.pyplot(fig)
-
-
-
-
