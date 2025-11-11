@@ -2,6 +2,7 @@ import streamlit as st
 import matplotlib.pyplot as plt
 import numpy as np
 import gspread
+import traceback
 from google.oauth2.service_account import Credentials
 from datetime import datetime
 
@@ -28,7 +29,8 @@ try:
     st.session_state["gsheet_connected"] = True
 
 except Exception as e:
-    st.warning(f"⚠️ ไม่สามารถเชื่อม Google Sheets ได้: {e}")
+    st.error("⚠️ ไม่สามารถเชื่อม Google Sheets ได้:")
+    st.code(traceback.format_exc())  # ✅ แสดงข้อความ error เต็มรูปแบบ
     sheet = None
     st.session_state["gsheet_connected"] = False
 
@@ -157,7 +159,8 @@ if st.session_state.get("gsheet_connected"):
         ])
         st.success("✅ บันทึกข้อมูลลง Google Sheets สำเร็จ!")
     except Exception as e:
-        st.warning(f"⚠️ บันทึกข้อมูลไม่สำเร็จ: {e}")
+        st.error("⚠️ บันทึกข้อมูลไม่สำเร็จ:")
+        st.code(traceback.format_exc())  # ✅ แสดงข้อความ error เต็มรูปแบบ
 
 # ==============================================================
 # 🎨 วาดกราฟ
