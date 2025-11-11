@@ -9,7 +9,11 @@ from datetime import datetime  # ✅ ต้องมี
 # 🔗 เชื่อมต่อ Google Sheets
 # ==============================================================
 
-scope = ["https://www.googleapis.com/auth/spreadsheets"]
+scope = [
+    "https://www.googleapis.com/auth/spreadsheets",
+    "https://www.googleapis.com/auth/drive"
+]
+
 
 try:
     creds = Credentials.from_service_account_info(
@@ -215,3 +219,4 @@ ax.text(len(values) - 1, max(tops) * 1.05,
 ax.set_title("TradingView Flow — สัญญาณล่วงหน้าและสถิติจริง", color='white', fontsize=14)
 plt.tight_layout()
 st.pyplot(fig)
+
