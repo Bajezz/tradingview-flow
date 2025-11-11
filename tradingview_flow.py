@@ -21,6 +21,9 @@ try:
         scopes=scope
     )
     client = gspread.authorize(creds)
+    sheets = client.openall()
+st.write([s.title for s in sheets])
+
     sheet = client.open("TradingView_Signals").sheet1
 
     # ทดสอบการเชื่อมต่อ
@@ -220,3 +223,4 @@ ax.text(len(values) - 1, max(tops) * 1.05,
 ax.set_title("TradingView Flow — สัญญาณล่วงหน้าและสถิติจริง", color='white', fontsize=14)
 plt.tight_layout()
 st.pyplot(fig)
+
