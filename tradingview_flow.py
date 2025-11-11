@@ -21,12 +21,15 @@ try:
         scopes=scope
     )
     client = gspread.authorize(creds)
-    sheets = client.openall()
-st.write([s.title for s in sheets])
 
+    # ✅ แสดงรายชื่อไฟล์ทั้งหมดที่บัญชี service account มองเห็น
+    sheets = client.openall()
+    st.write([s.title for s in sheets])
+
+    # ✅ พยายามเปิดชีตเป้าหมาย
     sheet = client.open("TradingView_Signals").sheet1
 
-    # ทดสอบการเชื่อมต่อ
+    # ✅ ทดสอบการเชื่อมต่อ
     sheet.append_row(["✅ Streamlit Connected", datetime.now().strftime("%Y-%m-%d %H:%M:%S")])
     st.success("✅ เชื่อม Google Sheets สำเร็จ!")
     st.session_state["gsheet_connected"] = True
@@ -163,7 +166,7 @@ if st.session_state.get("gsheet_connected"):
         st.success("✅ บันทึกข้อมูลลง Google Sheets สำเร็จ!")
     except Exception as e:
         st.error("⚠️ บันทึกข้อมูลไม่สำเร็จ:")
-        st.code(traceback.format_exc())  # ✅ แสดงข้อความ error เต็มรูปแบบ
+        st.code(traceback.format_exc())
 
 # ==============================================================
 # 🎨 วาดกราฟ
@@ -223,4 +226,3 @@ ax.text(len(values) - 1, max(tops) * 1.05,
 ax.set_title("TradingView Flow — สัญญาณล่วงหน้าและสถิติจริง", color='white', fontsize=14)
 plt.tight_layout()
 st.pyplot(fig)
-
