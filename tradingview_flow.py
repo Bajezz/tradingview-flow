@@ -3,7 +3,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 import gspread
 from google.oauth2.service_account import Credentials
-from datetime import datetime  # ✅ ต้องมี
+from datetime import datetime
 
 # ==============================================================
 # 🔗 เชื่อมต่อ Google Sheets
@@ -14,14 +14,12 @@ scope = [
     "https://www.googleapis.com/auth/drive"
 ]
 
-
 try:
     creds = Credentials.from_service_account_info(
         st.secrets["gcp_service_account"],
         scopes=scope
     )
     client = gspread.authorize(creds)
-    # ✅ แก้ชื่อชีตให้ตรงกับของคุณ
     sheet = client.open("TradingView_Signals").sheet1
 
     # ทดสอบการเชื่อมต่อ
@@ -147,7 +145,7 @@ if len(values) >= 3:
 # 💾 บันทึกลง Google Sheets
 # ==============================================================
 
-if st.session_state["gsheet_connected"]:
+if st.session_state.get("gsheet_connected"):
     try:
         sheet.append_row([
             datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
@@ -219,4 +217,3 @@ ax.text(len(values) - 1, max(tops) * 1.05,
 ax.set_title("TradingView Flow — สัญญาณล่วงหน้าและสถิติจริง", color='white', fontsize=14)
 plt.tight_layout()
 st.pyplot(fig)
-
