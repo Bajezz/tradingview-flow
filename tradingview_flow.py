@@ -131,46 +131,75 @@ except Exception:
     st.error("⚠️ เกิดข้อผิดพลาดในการพยากรณ์:")
     st.code(traceback.format_exc())
 
-# ==============================================================
-# แสดงผลลัพธ์การพยากรณ์
-# ==============================================================
 if next_value is not None:
     st.success(f"📈 ค่าที่คาดการณ์ถัดไป = **{next_value:.2f}** ({'📊 ขึ้น' if predicted_dir=='up' else '📉 ลง'})")
 
 # ==============================================================
-# 🔁 สัญญาณล่าสุด (anticipate)
+# 📈 วาดกราฟแท่งเทียน
 # ==============================================================
-anticipate_signal = None
-if len(values) >= 3:
-    last3 = values[-3:]
-    if last3[0] > last3[1] < last3[2]:
-        anticipate_signal = "up"
-    elif last3[0] < last3[1] > last3[2]:
-        anticipate_signal = "down"
+bar_width = 0.8
+scale = 0.5
+tops, bottoms = [], []
 
-# ==============================================================
-# 🎨 วาดกราฟ
-# ==============================================================
+for i, (v, c) in enumerate(zip(values, colors)):
+    height = v * scale
+    if i == 0:
+        bottom, top = 0.0, height
+    else:
+        prev_color = colors[i - 1]
+        prev_top, prev_bottom = tops[-1], bottoms[-1]
+        if c == 'royalblue':
+            bottom = prev_top if prev_color == 'royalblue' else prev_bottom
+            top = bottom + height
+        elif c == 'crimson':
+            top = prev_top if prev_color == 'royalblue' else prev_bottom
+            bottom = top - height
+        elif c == 'limegreen':
+            bottom = prev_top if prev_color in ['royalblue', 'limegreen'] else prev_bottom
+            top = bottom + height * 1.2
+        else:
+            bottom, top = prev_bottom, prev_top
+    tops.append(top)
+    bottoms.append(bottom)
+
+midpoints = [(t + b) / 2.0 for t, b in zip(tops, bottoms)]
+
 fig, ax = plt.subplots(figsize=(14, 6))
-ax.plot(values, color='white', marker='o', alpha=0.6)
+fig.patch.set_facecolor('#0e1117')
 ax.set_facecolor('#0e1117')
 
-# แสดงสัญญาณจาก anticipate
-if anticipate_signal == "up":
-    ax.annotate('↑', xy=(len(values)-1, values[-1]),
-                xytext=(len(values)-1, values[-1]-0.5),
-                color='lime', fontsize=18, ha='center')
-elif anticipate_signal == "down":
-    ax.annotate('↓', xy=(len(values)-1, values[-1]),
-                xytext=(len(values)-1, values[-1]+0.5),
-                color='red', fontsize=18, ha='center')
+for i, (top, bottom, c) in enumerate(zip(tops, bottoms, colors)):
+    ax.add_patch(plt.Rectangle((i - bar_width / 2, bottom),
+                               bar_width, top - bottom,
+                               color=c, ec='white', lw=0.5, alpha=0.9))
+ax.plot(range(len(midpoints)), midpoints, color='white', linewidth=0.8, alpha=0.4)
 
-# แสดงค่าพยากรณ์แท่งถัดไป
+# --- แสดงสัญญาณย้อนหลัง ---
+for i in range(1, len(values) - 1):
+    if values[i - 1] > values[i] < values[i + 1]:
+        ax.annotate('↑', xy=(i, midpoints[i]), xytext=(i, midpoints[i] - 0.35),
+                    color='lime', ha='center', fontsize=16, fontweight='bold')
+    elif values[i - 1] < values[i] > values[i + 1]:
+        ax.annotate('↓', xy=(i, midpoints[i]), xytext=(i, midpoints[i] + 0.35),
+                    color='red', ha='center', fontsize=16, fontweight='bold')
+
+# --- แสดงสัญญาณพยากรณ์ ---
 if next_value is not None:
-    ax.scatter(len(values), next_value, color='cyan' if predicted_dir == "up" else 'orange', s=100)
-    ax.text(len(values), next_value,
-            f"{'▲' if predicted_dir == 'up' else '▼'} {next_value:.2f}",
-            color='cyan' if predicted_dir == "up" else 'orange',
-            fontsize=14, fontweight='bold', ha='center', va='bottom' if predicted_dir == 'up' else 'top')
+    ax.annotate('↑' if predicted_dir == "up" else '↓',
+                xy=(len(values), midpoints[-1]),
+                xytext=(len(values), midpoints[-1] + (0.6 if predicted_dir == "up" else -0.6)),
+                color='cyan' if predicted_dir == "up" else 'orange',
+                ha='center', fontsize=22, fontweight='bold', alpha=0.8)
+    ax.text(len(values) - 0.2, midpoints[-1] + (0.9 if predicted_dir == "up" else -0.9),
+            f"{next_value:.2f}", color='white', fontsize=11, ha='center')
 
+ax.set_xlim(-0.5, len(values) + 0.5)
+ax.set_xticks(range(len(values)))
+ax.set_xticklabels([str(i + 1) for i in range(len(values))], color='white', fontsize=9)
+ax.set_yticks([])
+for spine in ax.spines.values():
+    spine.set_edgecolor('#2a2f36')
+
+ax.set_title("TradingView Flow — พยากรณ์แนวโน้มและสัญญาณล่วงหน้า", color='white', fontsize=14)
+plt.tight_layout()
 st.pyplot(fig)
