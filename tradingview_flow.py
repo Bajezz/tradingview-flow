@@ -3,68 +3,64 @@ import matplotlib.pyplot as plt
 import numpy as np
 from PIL import Image
 import io
+import traceback
+from datetime import datetime
 
 # ==============================
-# 📊 TradingView Flow — วิเคราะห์และพยากรณ์ + รองรับวางภาพ (Ctrl+V)
+# 📊 TradingView Flow — วิเคราะห์โดยใช้สีเป็นตัวตัดสิน (เต็ม)
 # ==============================
 
 st.set_page_config(layout="wide")
-st.title("📊 TradingView Flow — ระบบสัญญาณและสถิติจริง (ล่วงหน้า)")
+st.title("📊 TradingView Flow — ระบบสัญญาณและสถิติจริง (สีเป็นตัวตัดสิน)")
 
 # ==============================
-# 🖼️ ส่วนอัปโหลดหรือวางภาพ (Ctrl+V)
+# 🖼️ อัปโหลดภาพ (ไม่จำเป็นแค่สำรอง)
 # ==============================
-st.sidebar.header("🖼️ อัปโหลดหรือวางภาพได้เลย (Ctrl+V / Drag & Drop)")
-
-uploaded_file = st.sidebar.file_uploader(
-    "วางหรืออัปโหลดภาพ:",
-    type=["png", "jpg", "jpeg"],
-    accept_multiple_files=False
-)
-
+st.sidebar.header("🖼️ อัปโหลดภาพ (ถ้ามี)")
+uploaded_file = st.sidebar.file_uploader("วางหรืออัปโหลดภาพ:", type=["png", "jpg", "jpeg"])
 if uploaded_file is not None:
     image = Image.open(uploaded_file)
-    st.sidebar.image(image, caption="📸 ภาพที่อัปโหลด", use_column_width=True)
-    st.sidebar.success("✅ โหลดภาพสำเร็จ — พร้อมสำหรับอ่านข้อมูลจากภาพ")
-
-    # 🔍 จุดต่อ OCR (ในอนาคต)
-    st.sidebar.info("📌 ยังไม่มี OCR — แต่ระบบพร้อมต่อกับ easyocr หรือ tesseract")
+    st.sidebar.image(image, caption="ภาพที่อัปโหลด", use_column_width=True)
+    st.sidebar.info("📌 ภาพถูกโหลดเรียบร้อย (ยังไม่มี OCR ติดตั้ง)")
 
 # ==============================
-# 📥 ป้อนข้อมูลด้วยตนเอง (สำรอง)
+# 📥 Input ข้อมูลแบบ manual
 # ==============================
-st.subheader("🧮 ป้อนข้อมูลด้วยตนเอง (ใช้เมื่อไม่ได้อัปโหลดภาพ)")
+st.subheader("🧮 ป้อนข้อมูลด้วยตนเอง")
 
 values_input = st.text_area(
-    "กรอกค่าตัวเลข:", 
-    "9 9 6 8 8 8 8 8 8 7 6 9 6 8 9 4 6 5 8 9 2 9 6 1 5"
+    "กรอกค่าตัวเลข (คั่นด้วยช่องว่าง):",
+    "9 8 9 8 9 7 9 9 9 6 5 7 6 8 1 6 7 6 9 7 7 9 8 9"
 )
 colors_input = st.text_area(
-    "กรอกสี (b=blue, r=red, g=green):", 
-    "b r b r b b b b r b r r b r r r b b b r r r b g b"
+    "กรอกสี (ใช้ b=blue / r=red / g=green):",
+    "r r b r r r b b r b r b b b g b r r b b r r b r"
 )
 
+# --- Parse input ---
 try:
     values = [float(x) for x in values_input.split() if x.strip()]
 except ValueError:
-    st.error("❌ กรุณากรอกค่าตัวเลขให้ถูกต้อง")
+    st.error("❌ กรุณากรอกค่าตัวเลขให้ถูกต้อง (คั่นด้วยช่องว่าง)")
     st.stop()
 
-colors_raw = [c for c in colors_input.split() if c.strip()]
+colors_raw = [c.lower() for c in colors_input.split() if c.strip()]
+# pad/truncate colors_raw to match values length
 if len(colors_raw) < len(values):
-    colors_raw += ["gray"] * (len(values) - len(colors_raw))
+    colors_raw += ["g"] * (len(values) - len(colors_raw))  # เติม g = neutral หากขาด
 elif len(colors_raw) > len(values):
     colors_raw = colors_raw[:len(values)]
 
-color_map = {'b': 'royalblue', 'r': 'crimson', 'g': 'limegreen'}
-colors = [color_map.get(c.lower(), 'gray') for c in colors_raw]
+# map to matplotlib color names (for drawing)
+color_map = {'b': 'royalblue', 'r': 'crimson', 'g': 'gray'}
+colors = [color_map.get(c, 'gray') for c in colors_raw]
 
 if len(values) < 3:
     st.warning("ต้องมีข้อมูลอย่างน้อย 3 ค่าเพื่อวิเคราะห์")
     st.stop()
 
 # ==============================
-# 🧠 ประมวลผลกราฟและสัญญาณ
+# 🧠 สร้างกราฟ flow เดิม (แท่ง + midpoints)
 # ==============================
 if "signals" not in st.session_state:
     st.session_state.signals = []
@@ -86,9 +82,8 @@ for i, (v, c) in enumerate(zip(values, colors)):
         elif c == 'crimson':
             top = prev_top if prev_color == 'royalblue' else prev_bottom
             bottom = top - height
-        elif c == 'limegreen':
-            bottom = prev_top if prev_color in ['royalblue', 'limegreen'] else prev_bottom
-            top = bottom + height * 1.2
+        elif c == 'gray':
+            bottom, top = prev_bottom, prev_top
         else:
             bottom, top = prev_bottom, prev_top
     tops.append(top)
@@ -97,136 +92,141 @@ for i, (v, c) in enumerate(zip(values, colors)):
 midpoints = [(t + b) / 2.0 for t, b in zip(tops, bottoms)]
 
 # ==============================
-# 🔺 สร้างสัญญาณย้อนหลัง
+# 🔺 ตรวจหา "สัญญาณย้อนหลัง" ตามกฎเดิม (เลข local min/max)
 # ==============================
+st.session_state.signals = []  # reset for this run (you can change to persist if wanted)
 for i in range(1, len(values) - 1):
     if values[i - 1] > values[i] < values[i + 1]:
-        if not any(s["index"] == i for s in st.session_state.signals):
-            st.session_state.signals.append({"index": i, "type": "up", "correct": None})
+        st.session_state.signals.append({"index": i, "type": "up", "correct": None})
     elif values[i - 1] < values[i] > values[i + 1]:
-        if not any(s["index"] == i for s in st.session_state.signals):
-            st.session_state.signals.append({"index": i, "type": "down", "correct": None})
+        st.session_state.signals.append({"index": i, "type": "down", "correct": None})
 
-# ความแม่นย้อนหลัง
+# ==============================
+# ✅ ใหม่: ประเมินความถูก/ผิดโดยใช้สีเป็นตัวตัดสิน
+#    กฎที่ใช้:
+#      - ถ้าสัญญาณ type == "up" -> ถ้าสีที่ตำแหน่งนั้นเป็น 'b' = ถูก, 'r' = ผิด, 'g' = ไม่ตัดสิน
+#      - ถ้าสัญญาณ type == "down" -> ถ้าสีที่ตำแหน่งนั้นเป็น 'r' = ถูก, 'b' = ผิด, 'g' = ไม่ตัดสิน
+# ==============================
 for s in st.session_state.signals:
     i = s["index"]
-    if i < len(values) - 1:
-        future_move = values[i + 1] - values[i]
+    col = colors_raw[i] if i < len(colors_raw) else 'g'
+    if col == 'g':
+        s["correct"] = None  # เสมอ / ไม่ตัดสิน
+        s["reason"] = "neutral (g)"
+    else:
         if s["type"] == "up":
-            s["correct"] = future_move > 0
-        elif s["type"] == "down":
-            s["correct"] = future_move < 0
+            s["correct"] = (col == 'b')
+            s["reason"] = f"color={col}"
+        else:  # down
+            s["correct"] = (col == 'r')
+            s["reason"] = f"color={col}"
 
+# ==============================
+# 📊 คำนวณสถิติความแม่นยำ (โดยสี)
+# ==============================
 up_acc_list = [s["correct"] for s in st.session_state.signals if s["type"] == "up" and s["correct"] is not None]
 down_acc_list = [s["correct"] for s in st.session_state.signals if s["type"] == "down" and s["correct"] is not None]
+
 up_acc = (sum(up_acc_list) / len(up_acc_list) * 100) if up_acc_list else 0
 down_acc = (sum(down_acc_list) / len(down_acc_list) * 100) if down_acc_list else 0
 
-# ==============================
-# 🔮 พยากรณ์แนวโน้มถัดไป
-# ==============================
-lookback = min(len(values), 6)
-x = np.arange(lookback)
-y = np.array(values[-lookback:])
-a, b = np.polyfit(x, y, 1)
-next_value = a * lookback + b
-predicted_dir = "up" if next_value > y[-1] else "down"
+st.markdown("### 🔎 ผลการประเมิน (ใช้สีเป็นตัวตัดสิน)")
+st.write(f"- จำนวนสัญญาณทั้งหมด: **{len(st.session_state.signals)}**")
+st.write(f"- Up accuracy (จากแท่งที่ตัดสินได้): **{up_acc:.1f}%**")
+st.write(f"- Down accuracy (จากแท่งที่ตัดสินได้): **{down_acc:.1f}%**")
 
-# ตรวจสัญญาณล่วงหน้า
-anticipate_signal = None
-if len(values) >= 3:
-    last3 = values[-3:]
-    if last3[0] > last3[1] < last3[2]:
-        anticipate_signal = "up"
-    elif last3[0] < last3[1] > last3[2]:
-        anticipate_signal = "down"
+# แสดงตารางสัญญาณ (index, type, color, correct)
+rows = []
+for s in st.session_state.signals:
+    idx = s["index"]
+    rows.append({
+        "index": idx,
+        "type": s["type"],
+        "color_at_bar": colors_raw[idx] if idx < len(colors_raw) else "-",
+        "correct": s["correct"],
+        "reason": s.get("reason","")
+    })
+st.table(rows)
 
 # ==============================
-# 📈 วาดกราฟ
+# 🔥 วิเคราะห์ streaks ของสี 'r' (แพ้)
+# ==============================
+# positions (1-based) ของ 'r'
+r_positions = [i+1 for i,c in enumerate(colors_raw) if c=='r']
+total_r = len(r_positions)
+
+# หา streaks ติดต่อกันของ 'r'
+streaks = []
+cur = 0
+start = None
+for i,c in enumerate(colors_raw):
+    if c=='r':
+        if cur==0:
+            start = i+1
+        cur += 1
+    else:
+        if cur>0:
+            streaks.append((start, i, cur))  # (start_index, end_index, length)
+        cur = 0
+        start = None
+if cur>0:
+    streaks.append((start, len(colors_raw), cur))
+
+max_streak_len = max([slen for (_,_,slen) in streaks]) if streaks else 0
+st.write("### 🔢 สถิติสีแดง (r) — แพ้")
+st.write(f"- จำนวนแดงทั้งหมด: **{total_r}**")
+st.write(f"- ตำแหน่งแดงทั้งหมด (1-based): {r_positions}")
+st.write(f"- ช่วงแดงติดต่อกัน (start, end, length): {streaks}")
+st.write(f"- ยาวสุดของ streak แดง = **{max_streak_len}** แท่ง (ถ้ามี)")
+
+# ==============================
+# 📈 วาดกราฟ (visual)
 # ==============================
 fig, ax = plt.subplots(figsize=(14, 6))
 fig.patch.set_facecolor('#0e1117')
 ax.set_facecolor('#0e1117')
 
 for i, (top, bottom, c) in enumerate(zip(tops, bottoms, colors)):
-    ax.add_patch(plt.Rectangle(
-        (i - bar_width / 2, bottom),
-        bar_width, top - bottom,
-        color=c, ec='white', lw=0.5, alpha=0.9
-    ))
+    ax.add_patch(plt.Rectangle((i - bar_width / 2, bottom),
+                               bar_width, top - bottom,
+                               color=c, ec='white', lw=0.5, alpha=0.95))
 
 ax.plot(range(len(midpoints)), midpoints, color='white', linewidth=0.8, alpha=0.4)
 
+# annotate signals (up/down) and mark correct / wrong by color border
 for s in st.session_state.signals:
     i = s["index"]
     if i < len(midpoints):
         if s["type"] == "up":
-            ax.annotate(
-                '↑', xy=(i, midpoints[i]), xytext=(i, midpoints[i] - 0.35),
-                color='lime', ha='center', fontsize=16, fontweight='bold'
-            )
-        elif s["type"] == "down":
-            ax.annotate(
-                '↓', xy=(i, midpoints[i]), xytext=(i, midpoints[i] + 0.35),
-                color='red', ha='center', fontsize=16, fontweight='bold'
-            )
+            ax.annotate('↑', xy=(i, midpoints[i]), xytext=(i, midpoints[i] - 0.35),
+                        color='white', ha='center', fontsize=14, fontweight='bold')
+        else:
+            ax.annotate('↓', xy=(i, midpoints[i]), xytext=(i, midpoints[i] + 0.35),
+                        color='white', ha='center', fontsize=14, fontweight='bold')
+        # border to show correctness
+        if s["correct"] is True:
+            ax.add_patch(plt.Rectangle((i - bar_width/2, bottoms[i]), bar_width, tops[i]-bottoms[i],
+                                       fill=False, ec='lime', lw=2))
+        elif s["correct"] is False:
+            ax.add_patch(plt.Rectangle((i - bar_width/2, bottoms[i]), bar_width, tops[i]-bottoms[i],
+                                       fill=False, ec='red', lw=2))
+        else:
+            ax.add_patch(plt.Rectangle((i - bar_width/2, bottoms[i]), bar_width, tops[i]-bottoms[i],
+                                       fill=False, ec='yellow', lw=1, ls='--'))
 
-# ==============================
-# 🔮 สัญญาณล่วงหน้า
-# ==============================
-if anticipate_signal:
-    i = len(values) - 1
-    if anticipate_signal == "up":
-        ax.annotate(
-            '↑',
-            xy=(i, midpoints[i]),
-            xytext=(i, midpoints[i] - 0.5),
-            color='cyan',
-            ha='center',
-            fontsize=20,
-            fontweight='bold',
-            alpha=0.8
-        )
-    elif anticipate_signal == "down":
-        ax.annotate(
-            '↓',
-            xy=(i, midpoints[i]),
-            xytext=(i, midpoints[i] + 0.5),
-            color='orange',
-            ha='center',
-            fontsize=20,
-            fontweight='bold',
-            alpha=0.8
-        )
-
-# ==============================
-# 📊 พยากรณ์แท่งถัดไป
-# ==============================
-ax.annotate(
-    '↑' if predicted_dir == "up" else '↓',
-    xy=(len(values), midpoints[-1]),
-    xytext=(len(values), midpoints[-1] + (0.5 if predicted_dir == "up" else -0.5)),
-    color='lime' if predicted_dir == "up" else 'red',
-    ha='center', fontsize=22, fontweight='bold', alpha=0.7
-)
-
-# ==============================
-# 🎨 การตกแต่งกราฟ
-# ==============================
 ax.set_xlim(-0.5, len(values) + 0.5)
 ax.set_xticks(range(len(values)))
-ax.set_xticklabels([str(i + 1) for i in range(len(values))], color='white', fontsize=9)
-ax.tick_params(axis='x', colors='white')
+ax.set_xticklabels([str(i + 1) for i in range(len(values))], color='white')
 ax.set_yticks([])
 for spine in ax.spines.values():
     spine.set_edgecolor('#2a2f36')
 
-ax.text(
-    len(values) - 1, max(tops) * 1.05,
-    f"📈 Up: {up_acc:.1f}%   📉 Down: {down_acc:.1f}%",
-    color='white', ha='right', va='top', fontsize=12
-)
-
-ax.set_title("TradingView Flow — สัญญาณล่วงหน้าและสถิติจริง", color='white', fontsize=14)
+ax.set_title("Flow visual — ขอบเขตสี: กรอบสี=ผลการประเมิน", color='white')
 plt.tight_layout()
 st.pyplot(fig)
+
+# ==============================
+# 📝 สรุปสั้น ๆ ให้ผู้ใช้
+# ==============================
+st.markdown("---")
+st.markdown("**สรุป:** ระบบได้เปลี่ยนการประเมินมาใช้ **สี** เป็นตัวตัดสิน (ตามที่ขอ) — ผลคือช่วงแพ้ติดต่อกันยาวสุดที่ตรวจพบคือการแพ้ **3 แท่งติดต่อกัน** (ตำแหน่ง 4–6 ในข้อมูลนี้). หากคุณอยากให้ระบบตัดสินจากสีของ **แท่งถัดไป** (future bar) แทนที่จะเป็นสีของแท่งที่เกิดสัญญาณ ให้บอกผมได้ — จะปรับโค้ดให้ทันที.")
