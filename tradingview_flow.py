@@ -1,71 +1,69 @@
 import streamlit as st
 import matplotlib.pyplot as plt
-import numpy as np
-
-# ================
-# แสดงเฉพาะกราฟ (no extra outputs)
-# ================
+from PIL import Image
 
 st.set_page_config(layout="wide")
-st.title("📊 Flow Graph — กราฟอย่างเดียว")
+st.title("📊 TradingView Flow — วิเคราะห์สัญญาณแบบ Real-Time และแบบยืนยันแท่งถัดไป")
 
-# ---------- Input ----------
-values_input = st.text_area("ค่าตัวเลข (คั่นด้วยช่องว่าง):",
-                            "9 8 9 8 9 7 9 9 9 6 5 7 6 8 1 6 7 6 9 7 7 9 8 9")
-colors_input = st.text_area("สีแท่ง (b=น้ำเงิน, r=แดง, g=เสมอ):",
-                            "r r b r r r b b r b r b b b g b r r b b r r b r")
+# ==============================
+# 📥 Input
+# ==============================
+st.subheader("🧮 ป้อนข้อมูล")
+values_input = st.text_area("ค่าตัวเลข:", "9 9 9 8 8 6 6 7 8 9 4 6 8 9 9 7")
+colors_input = st.text_area("สีแท่ง (b=น้ำเงิน, r=แดง, g=เขียว=เสมอ):", "r b r r b b g b r b b b r r r b")
 
-# ---------- Parse ----------
+mode = st.radio("🧭 เลือกโหมดวิเคราะห์:",
+                ["Real-Time (ทันที)", "Confirm Next Bar (ยืนยันแท่งถัดไป)"],
+                index=0)
+
+# ==============================
+# แปลงข้อมูล
+# ==============================
 try:
     values = [float(x) for x in values_input.split() if x.strip()]
-except Exception:
-    st.error("❌ ตัวเลขไม่ถูกต้อง — ตรวจรูปแบบแล้วลองใหม่")
+except:
+    st.error("❌ ตัวเลขไม่ถูกต้อง")
     st.stop()
 
 colors_raw = [c.lower() for c in colors_input.split() if c.strip()]
-# pad/truncate to match length
 if len(colors_raw) < len(values):
     colors_raw += ["g"] * (len(values) - len(colors_raw))
 elif len(colors_raw) > len(values):
     colors_raw = colors_raw[:len(values)]
 
-color_map = {"b": "royalblue", "r": "crimson", "g": "limegreen"}
-colors = [color_map.get(c, "gray") for c in colors_raw]
+color_map = {'b': 'royalblue', 'r': 'crimson', 'g': 'limegreen'}
+colors = [color_map.get(c, 'gray') for c in colors_raw]
 
-if len(values) < 3:
-    st.warning("ต้องมีข้อมูลอย่างน้อย 3 ค่า")
-    st.stop()
-
-# ---------- Compute continuous flow positions ----------
+# ==============================
+# สร้างแท่งกราฟ flow
+# ==============================
 bar_width = 0.8
 scale = 0.5
-tops = []
-bottoms = []
+tops, bottoms = [], []
 
-for i, v in enumerate(values):
+for i, (v, c) in enumerate(zip(values, colors_raw)):
     height = v * scale
     if i == 0:
-        bottom, top = 0.0, height
+        bottom, top = 0, height
     else:
-        prev_top = tops[-1]
-        prev_bottom = bottoms[-1]
-        # Use color of current bar to decide stacking direction,
-        # but keep consistent continuous layout:
-        c = colors_raw[i]
-        if c == "b":           # blue -> stack upward
+        prev_c = colors_raw[i - 1]
+        prev_top, prev_bottom = tops[-1], bottoms[-1]
+        if c == "b":
             bottom = prev_top
             top = bottom + height
-        elif c == "r":         # red -> stack downward
+        elif c == "r":
             top = prev_bottom
             bottom = top - height
-        else:                  # g or unknown -> flat (use prev)
+        else:  # g
             bottom, top = prev_bottom, prev_top
-    bottoms.append(bottom)
     tops.append(top)
+    bottoms.append(bottom)
 
-midpoints = [(t + b) / 2.0 for t, b in zip(tops, bottoms)]
+midpoints = [(t + b) / 2 for t, b in zip(tops, bottoms)]
 
-# ---------- Find local min/max signals ----------
+# ==============================
+# หา signal จุดกลับตัว
+# ==============================
 signals = []
 for i in range(1, len(values) - 1):
     if values[i - 1] > values[i] < values[i + 1]:
@@ -73,54 +71,112 @@ for i in range(1, len(values) - 1):
     elif values[i - 1] < values[i] > values[i + 1]:
         signals.append({"index": i, "type": "down"})
 
-# ---------- Evaluate each signal by next bar color (for visual box) ----------
+# ถ้าโหมด Real-Time → ให้แท่งสุดท้ายมีสัญญาณได้ (หากเป็นจุดหักหัวท้าย)
+if mode == "Real-Time (ทันที)" and len(values) >= 2:
+    i = len(values) - 1
+    if values[i - 1] > values[i]:
+        signals.append({"index": i, "type": "up"})
+    elif values[i - 1] < values[i]:
+        signals.append({"index": i, "type": "down"})
+
+# ==============================
+# ประเมินผล (ตามโหมด)
+# ==============================
 for s in signals:
     i = s["index"]
-    if i + 1 >= len(colors_raw):
-        s["result"] = "neutral"
-    else:
+    if mode == "Confirm Next Bar (ยืนยันแท่งถัดไป)":
+        if i + 1 >= len(colors_raw):
+            s["result"] = "neutral"
+            continue
         next_color = colors_raw[i + 1]
-        if s["type"] == "up":
-            s["result"] = "win" if next_color == "b" else ("lose" if next_color == "r" else "neutral")
+    else:  # Real-Time
+        next_color = colors_raw[i]
+
+    if s["type"] == "up":
+        if next_color == "b":
+            s["result"] = "win"
+        elif next_color == "r":
+            s["result"] = "lose"
         else:
-            s["result"] = "win" if next_color == "r" else ("lose" if next_color == "b" else "neutral")
+            s["result"] = "neutral"
+    elif s["type"] == "down":
+        if next_color == "r":
+            s["result"] = "win"
+        elif next_color == "b":
+            s["result"] = "lose"
+        else:
+            s["result"] = "neutral"
 
-# ---------- Draw only the figure ----------
+# ==============================
+# สถิติ
+# ==============================
+wins = sum(1 for s in signals if s["result"] == "win")
+losses = sum(1 for s in signals if s["result"] == "lose")
+draws = sum(1 for s in signals if s["result"] == "neutral")
+
+lose_streaks, streak = [], 0
+for s in signals:
+    if s["result"] == "lose":
+        streak += 1
+    else:
+        if streak > 0:
+            lose_streaks.append(streak)
+        streak = 0
+if streak > 0:
+    lose_streaks.append(streak)
+max_lose_streak = max(lose_streaks) if lose_streaks else 0
+accuracy = (wins / (wins + losses) * 100) if (wins + losses) else 0
+
+# ==============================
+# วาดกราฟ
+# ==============================
 fig, ax = plt.subplots(figsize=(14, 6))
-fig.patch.set_facecolor("#0e1117")
-ax.set_facecolor("#0e1117")
+fig.patch.set_facecolor('#0e1117')
+ax.set_facecolor('#0e1117')
 
-# draw bars
 for i, (b, t, c) in enumerate(zip(bottoms, tops, colors)):
-    ax.add_patch(plt.Rectangle((i - bar_width / 2, b), bar_width, t - b,
-                               color=c, ec="white", lw=0.5))
+    ax.add_patch(plt.Rectangle((i - bar_width/2, b), bar_width, t - b, color=c, ec='white', lw=0.5))
 
-# draw midpoints line
-ax.plot(range(len(midpoints)), midpoints, color="white", lw=0.8, alpha=0.4)
-
-# annotate signals and draw result frame (green=win, red=lose, yellow=neutral)
 for s in signals:
     i = s["index"]
     mid_y = midpoints[i]
-    # arrow up/down
     if s["type"] == "up":
-        ax.annotate("↑", (i, mid_y - 0.35), color="cyan", ha="center", fontsize=14, fontweight="bold")
+        ax.annotate('↑', (i, mid_y - 0.3), color='cyan', ha='center', fontsize=14, fontweight='bold')
     else:
-        ax.annotate("↓", (i, mid_y + 0.35), color="orange", ha="center", fontsize=14, fontweight="bold")
+        ax.annotate('↓', (i, mid_y + 0.3), color='orange', ha='center', fontsize=14, fontweight='bold')
 
-    # result box color
-    box_color = {"win": "lime", "lose": "red", "neutral": "yellow"}.get(s["result"], "yellow")
-    ax.add_patch(plt.Rectangle((i - bar_width / 2, bottoms[i]), bar_width, tops[i] - bottoms[i],
-                               fill=False, ec=box_color, lw=2))
+    color_box = {"win": "lime", "lose": "red", "neutral": "yellow"}[s["result"]]
+    ax.add_patch(plt.Rectangle((i - bar_width/2, bottoms[i]),
+                               bar_width, tops[i] - bottoms[i],
+                               fill=False, ec=color_box, lw=2))
 
-# final formatting: only the graph
+ax.plot(range(len(midpoints)), midpoints, color='white', lw=0.8, alpha=0.4)
 ax.set_xlim(-0.5, len(values) - 0.5)
 ax.set_xticks(range(len(values)))
-ax.set_xticklabels([str(i + 1) for i in range(len(values))], color="white")
+ax.set_xticklabels([str(i + 1) for i in range(len(values))], color='white')
 ax.set_yticks([])
-for spine in ax.spines.values():
-    spine.set_edgecolor("#2a2f36")
-ax.set_title("Flow Graph — (กรอบสี = ผลจากแท่งถัดไป)", color="white")
-
+for s in ax.spines.values():
+    s.set_color('#333')
+ax.set_title(f"📈 Flow Graph — โหมด: {mode}", color='white')
 plt.tight_layout()
 st.pyplot(fig)
+
+# ==============================
+# สรุปผล
+# ==============================
+st.markdown("---")
+st.markdown(f"### 📊 ผลการวิเคราะห์ ({mode})")
+st.write(f"✅ ชนะทั้งหมด: **{wins}**")
+st.write(f"❌ แพ้ทั้งหมด: **{losses}**")
+st.write(f"⚪ เสมอทั้งหมด: **{draws}**")
+st.write(f"🎯 ความแม่นยำ (ไม่รวมเสมอ): **{accuracy:.1f}%**")
+st.write(f"🔥 แพ้ติดกันยาวสุด: **{max_lose_streak} ไม้**")
+
+rows = []
+for s in signals:
+    rows.append({
+        "แท่งที่": s["index"] + 1,
+        "ประเภท": s["type"],
+        "ผลลัพธ์": s["result"]
+    })
+st.table(rows)
