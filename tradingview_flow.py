@@ -170,3 +170,4 @@ ax.set_title("TradingView Flow — สัญญาณล่วงหน้าแ
 plt.tight_layout()
 
 st.pyplot(fig)
+
