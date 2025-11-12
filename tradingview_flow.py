@@ -5,31 +5,29 @@ from PIL import Image
 import io
 
 # ==============================
-# 📊 TradingView Flow — วิเคราะห์และพยากรณ์ + รองรับวางภาพ (Ctrl+V)
-# ==============================
-
-st.set_page_config(layout="wide")
-st.title("📊 TradingView Flow — ระบบสัญญาณและสถิติจริง (ล่วงหน้า)")
-
-# ==============================
 # 🖼️ ส่วนอัปโหลด/วางภาพ (Ctrl+V)
 # ==============================
-st.sidebar.header("🖼️ อัปโหลดหรือวางภาพได้เลย (Ctrl+V)")
-uploaded_file = st.sidebar.file_uploader("วางหรืออัปโหลดภาพ:", type=["png", "jpg", "jpeg"])
+from streamlit_camera_input_live import camera_input_live
 
+st.sidebar.header("🖼️ วางภาพ (Ctrl+V) หรือเลือกจากไฟล์")
+
+# รองรับทั้งการอัปโหลดไฟล์ และการวางภาพจาก clipboard
+uploaded_file = st.sidebar.file_uploader("📎 เลือกภาพจากเครื่อง:", type=["png", "jpg", "jpeg"])
+pasted_image = camera_input_live(label="หรือวางภาพจาก Clipboard (Ctrl+V)", key="paste_img")
+
+image = None
 if uploaded_file is not None:
     image = Image.open(uploaded_file)
-    st.sidebar.image(image, caption="ภาพที่อัปโหลด", use_column_width=True)
+    st.sidebar.success("✅ โหลดภาพจากไฟล์สำเร็จ")
+elif pasted_image is not None:
+    image = Image.open(io.BytesIO(pasted_image.getvalue()))
+    st.sidebar.success("✅ วางภาพจาก Clipboard สำเร็จ")
 
+if image:
+    st.sidebar.image(image, caption="ภาพที่ใช้วิเคราะห์", use_column_width=True)
     # >>> จุดต่อ OCR / การอ่านค่าจากภาพ <<<
-    # เช่น ส่งให้ฟังก์ชันอ่านตัวเลขและสีออกจากภาพ (ยังไม่ implement)
-    # results = extract_numbers_and_colors(image)
+    # เช่น: results = extract_numbers_and_colors(image)
     st.sidebar.info("📌 ภาพถูกโหลดเรียบร้อย (รอระบบอ่านค่าจากภาพ)")
-
-# ==============================
-# 📥 Input ข้อมูลแบบ manual (สำรอง)
-# ==============================
-st.subheader("🧮 ป้อนข้อมูลด้วยตนเอง (ใช้เมื่อไม่ได้อัปโหลดภาพ)")
 
 values_input = st.text_area("กรอกค่าตัวเลข:", "9 9 6 8 8 8 8 8 8 7 6 9 6 8 9 4 6 5 8 9 2 9 6 1 5")
 colors_input = st.text_area("กรอกสี (b=blue, r=red, g=green):", "b r b r b b b b r b r r b r r r b b b r r r b g b")
@@ -184,3 +182,4 @@ ax.text(len(values) - 1, max(tops) * 1.05,
 ax.set_title("TradingView Flow — สัญญาณล่วงหน้าและสถิติจริง", color='white', fontsize=14)
 plt.tight_layout()
 st.pyplot(fig)
+
