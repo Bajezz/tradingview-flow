@@ -2,6 +2,10 @@ import streamlit as st
 import matplotlib.pyplot as plt
 import numpy as np
 
+# ==============================
+# 📊 TradingView Flow — วิเคราะห์และพยากรณ์
+# ==============================
+
 st.set_page_config(layout="wide")
 st.title("📊 TradingView Flow — ระบบสัญญาณและสถิติจริง (ล่วงหน้า)")
 
@@ -29,7 +33,7 @@ if len(values) < 3:
     st.warning("ต้องมีข้อมูลอย่างน้อย 3 ค่าเพื่อวิเคราะห์")
     st.stop()
 
-# --- Session ---
+# --- Session สำหรับเก็บสัญญาณ ---
 if "signals" not in st.session_state:
     st.session_state.signals = []
 
@@ -45,23 +49,25 @@ for i, (v, c) in enumerate(zip(values, colors)):
     else:
         prev_color = colors[i - 1]
         prev_top, prev_bottom = tops[-1], bottoms[-1]
-        if c == 'royalblue':
+
+        if c == 'royalblue':  # แนวโน้มขึ้น
             bottom = prev_top if prev_color == 'royalblue' else prev_bottom
             top = bottom + height
-        elif c == 'crimson':
+        elif c == 'crimson':  # แนวโน้มลง
             top = prev_top if prev_color == 'royalblue' else prev_bottom
             bottom = top - height
-        elif c == 'limegreen':
+        elif c == 'limegreen':  # สัญญาณพิเศษ
             bottom = prev_top if prev_color in ['royalblue', 'limegreen'] else prev_bottom
             top = bottom + height * 1.2
         else:
             bottom, top = prev_bottom, prev_top
+
     tops.append(top)
     bottoms.append(bottom)
 
 midpoints = [(t + b) / 2.0 for t, b in zip(tops, bottoms)]
 
-# --- สร้างสัญญาณย้อนหลังจริง ---
+# --- ตรวจจับสัญญาณย้อนหลัง (จริง) ---
 for i in range(1, len(values) - 1):
     if values[i - 1] > values[i] < values[i + 1]:
         if not any(s["index"] == i for s in st.session_state.signals):
@@ -70,7 +76,7 @@ for i in range(1, len(values) - 1):
         if not any(s["index"] == i for s in st.session_state.signals):
             st.session_state.signals.append({"index": i, "type": "down", "correct": None})
 
-# --- ตรวจสอบความแม่นย้อนหลัง ---
+# --- ประเมินความแม่นย้อนหลัง ---
 for s in st.session_state.signals:
     i = s["index"]
     if i < len(values) - 1:
@@ -80,13 +86,13 @@ for s in st.session_state.signals:
         elif s["type"] == "down":
             s["correct"] = future_move < 0
 
-# --- ความแม่นย้อนหลัง ---
+# --- ความแม่นย้อนหลัง (% Accuracy) ---
 up_acc_list = [s["correct"] for s in st.session_state.signals if s["type"] == "up" and s["correct"] is not None]
 down_acc_list = [s["correct"] for s in st.session_state.signals if s["type"] == "down" and s["correct"] is not None]
 up_acc = (sum(up_acc_list) / len(up_acc_list) * 100) if up_acc_list else 0
 down_acc = (sum(down_acc_list) / len(down_acc_list) * 100) if down_acc_list else 0
 
-# --- พยากรณ์แท่งถัดไปจากแนวโน้มล่าสุด ---
+# --- พยากรณ์แท่งถัดไป (แนวโน้มเชิงเส้น) ---
 lookback = min(len(values), 6)
 x = np.arange(lookback)
 y = np.array(values[-lookback:])
@@ -94,7 +100,7 @@ a, b = np.polyfit(x, y, 1)
 next_value = a * lookback + b
 predicted_dir = "up" if next_value > y[-1] else "down"
 
-# --- พยากรณ์ “ล่วงหน้า” ของแท่งปัจจุบัน ---
+# --- พยากรณ์ล่วงหน้าแท่งปัจจุบัน ---
 anticipate_signal = None
 if len(values) >= 3:
     last3 = values[-3:]
@@ -103,16 +109,20 @@ if len(values) >= 3:
     elif last3[0] < last3[1] > last3[2]:
         anticipate_signal = "down"
 
-# --- วาดกราฟ ---
+# --- วาดกราฟหลัก ---
 fig, ax = plt.subplots(figsize=(14, 6))
 fig.patch.set_facecolor('#0e1117')
 ax.set_facecolor('#0e1117')
 
+# วาดแท่ง
 for i, (top, bottom, c) in enumerate(zip(tops, bottoms, colors)):
-    ax.add_patch(plt.Rectangle((i - bar_width / 2, bottom),
-                               bar_width, top - bottom,
-                               color=c, ec='white', lw=0.5, alpha=0.9))
+    ax.add_patch(plt.Rectangle(
+        (i - bar_width / 2, bottom),
+        bar_width, top - bottom,
+        color=c, ec='white', lw=0.5, alpha=0.9
+    ))
 
+# วาดเส้น midpoints
 ax.plot(range(len(midpoints)), midpoints, color='white', linewidth=0.8, alpha=0.4)
 
 # --- แสดงสัญญาณย้อนหลัง ---
@@ -126,7 +136,7 @@ for s in st.session_state.signals:
             ax.annotate('↓', xy=(i, midpoints[i]), xytext=(i, midpoints[i] + 0.35),
                         color='red', ha='center', fontsize=16, fontweight='bold')
 
-# --- แสดงสัญญาณล่วงหน้าแท่งปัจจุบัน ---
+# --- สัญญาณล่วงหน้า (anticipate) ---
 if anticipate_signal:
     i = len(values) - 1
     if anticipate_signal == "up":
@@ -136,14 +146,14 @@ if anticipate_signal:
         ax.annotate('↓', xy=(i, midpoints[i]), xytext=(i, midpoints[i] + 0.5),
                     color='orange', ha='center', fontsize=20, fontweight='bold', alpha=0.8)
 
-# --- แสดงพยากรณ์แท่งถัดไป ---
+# --- พยากรณ์แท่งถัดไป ---
 ax.annotate('↑' if predicted_dir == "up" else '↓',
             xy=(len(values), midpoints[-1]),
             xytext=(len(values), midpoints[-1] + (0.5 if predicted_dir == "up" else -0.5)),
             color='lime' if predicted_dir == "up" else 'red',
             ha='center', fontsize=22, fontweight='bold', alpha=0.7)
 
-# --- ตกแต่ง ---
+# --- ตกแต่งกราฟ ---
 ax.set_xlim(-0.5, len(values) + 0.5)
 ax.set_xticks(range(len(values)))
 ax.set_xticklabels([str(i + 1) for i in range(len(values))], color='white', fontsize=9)
@@ -158,4 +168,5 @@ ax.text(len(values) - 1, max(tops) * 1.05,
 
 ax.set_title("TradingView Flow — สัญญาณล่วงหน้าและสถิติจริง", color='white', fontsize=14)
 plt.tight_layout()
+
 st.pyplot(fig)
