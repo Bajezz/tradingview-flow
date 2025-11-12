@@ -22,29 +22,27 @@ uploaded_file = st.sidebar.file_uploader(
     accept_multiple_files=False
 )
 
-# รองรับวางภาพด้วย Ctrl+V (Streamlit จะมองเป็น file upload อัตโนมัติ)
 if uploaded_file is not None:
     image = Image.open(uploaded_file)
     st.sidebar.image(image, caption="📸 ภาพที่อัปโหลด", use_column_width=True)
     st.sidebar.success("✅ โหลดภาพสำเร็จ — พร้อมสำหรับอ่านข้อมูลจากภาพ")
 
-    # ==============================
-    # 🔍 จุดต่อ OCR / การอ่านค่าจากภาพ (ในอนาคต)
-    # ==============================
-    st.sidebar.info("📌 ยังไม่มี OCR — แต่ระบบพร้อมต่อกับฟังก์ชันอ่านค่าจากภาพ เช่น easyocr หรือ tesseract")
-    # ตัวอย่าง (ในอนาคต):
-    # import easyocr
-    # reader = easyocr.Reader(['en'])
-    # result = reader.readtext(np.array(image))
-    # st.write(result)
+    # 🔍 จุดต่อ OCR (ในอนาคต)
+    st.sidebar.info("📌 ยังไม่มี OCR — แต่ระบบพร้อมต่อกับ easyocr หรือ tesseract")
 
 # ==============================
 # 📥 ป้อนข้อมูลด้วยตนเอง (สำรอง)
 # ==============================
 st.subheader("🧮 ป้อนข้อมูลด้วยตนเอง (ใช้เมื่อไม่ได้อัปโหลดภาพ)")
 
-values_input = st.text_area("กรอกค่าตัวเลข:", "9 9 6 8 8 8 8 8 8 7 6 9 6 8 9 4 6 5 8 9 2 9 6 1 5")
-colors_input = st.text_area("กรอกสี (b=blue, r=red, g=green):", "b r b r b b b b r b r r b r r r b b b r r r b g b")
+values_input = st.text_area(
+    "กรอกค่าตัวเลข:", 
+    "9 9 6 8 8 8 8 8 8 7 6 9 6 8 9 4 6 5 8 9 2 9 6 1 5"
+)
+colors_input = st.text_area(
+    "กรอกสี (b=blue, r=red, g=green):", 
+    "b r b r b b b b r b r r b r r r b b b r r r b g b"
+)
 
 try:
     values = [float(x) for x in values_input.split() if x.strip()]
@@ -151,9 +149,11 @@ fig.patch.set_facecolor('#0e1117')
 ax.set_facecolor('#0e1117')
 
 for i, (top, bottom, c) in enumerate(zip(tops, bottoms, colors)):
-    ax.add_patch(plt.Rectangle((i - bar_width / 2, bottom),
-                               bar_width, top - bottom,
-                               color=c, ec='white', lw=0.5, alpha=0.9))
+    ax.add_patch(plt.Rectangle(
+        (i - bar_width / 2, bottom),
+        bar_width, top - bottom,
+        color=c, ec='white', lw=0.5, alpha=0.9
+    ))
 
 ax.plot(range(len(midpoints)), midpoints, color='white', linewidth=0.8, alpha=0.4)
 
@@ -161,18 +161,72 @@ for s in st.session_state.signals:
     i = s["index"]
     if i < len(midpoints):
         if s["type"] == "up":
-            ax.annotate('↑', xy=(i, midpoints[i]), xytext=(i, midpoints[i] - 0.35),
-                        color='lime', ha='center', fontsize=16, fontweight='bold')
+            ax.annotate(
+                '↑', xy=(i, midpoints[i]), xytext=(i, midpoints[i] - 0.35),
+                color='lime', ha='center', fontsize=16, fontweight='bold'
+            )
         elif s["type"] == "down":
-            ax.annotate('↓', xy=(i, midpoints[i]), xytext=(i, midpoints[i] + 0.35),
-                        color='red', ha='center', fontsize=16, fontweight='bold')
+            ax.annotate(
+                '↓', xy=(i, midpoints[i]), xytext=(i, midpoints[i] + 0.35),
+                color='red', ha='center', fontsize=16, fontweight='bold'
+            )
 
-# สัญญาณล่วงหน้า
+# ==============================
+# 🔮 สัญญาณล่วงหน้า
+# ==============================
 if anticipate_signal:
     i = len(values) - 1
     if anticipate_signal == "up":
-        ax.annotate('↑', xy=(i, midpoints[i]), xytext=(i, midpoints[i] - 0.5),
-                    color='cyan', ha='center', fontsize=20, fontweight='bold', alpha=0.8)
+        ax.annotate(
+            '↑',
+            xy=(i, midpoints[i]),
+            xytext=(i, midpoints[i] - 0.5),
+            color='cyan',
+            ha='center',
+            fontsize=20,
+            fontweight='bold',
+            alpha=0.8
+        )
     elif anticipate_signal == "down":
-        ax.annotate('↓', xy=(i, midpoints[i]), xytext=(i, midpoints[i] + 0.5),
-                    colo
+        ax.annotate(
+            '↓',
+            xy=(i, midpoints[i]),
+            xytext=(i, midpoints[i] + 0.5),
+            color='orange',
+            ha='center',
+            fontsize=20,
+            fontweight='bold',
+            alpha=0.8
+        )
+
+# ==============================
+# 📊 พยากรณ์แท่งถัดไป
+# ==============================
+ax.annotate(
+    '↑' if predicted_dir == "up" else '↓',
+    xy=(len(values), midpoints[-1]),
+    xytext=(len(values), midpoints[-1] + (0.5 if predicted_dir == "up" else -0.5)),
+    color='lime' if predicted_dir == "up" else 'red',
+    ha='center', fontsize=22, fontweight='bold', alpha=0.7
+)
+
+# ==============================
+# 🎨 การตกแต่งกราฟ
+# ==============================
+ax.set_xlim(-0.5, len(values) + 0.5)
+ax.set_xticks(range(len(values)))
+ax.set_xticklabels([str(i + 1) for i in range(len(values))], color='white', fontsize=9)
+ax.tick_params(axis='x', colors='white')
+ax.set_yticks([])
+for spine in ax.spines.values():
+    spine.set_edgecolor('#2a2f36')
+
+ax.text(
+    len(values) - 1, max(tops) * 1.05,
+    f"📈 Up: {up_acc:.1f}%   📉 Down: {down_acc:.1f}%",
+    color='white', ha='right', va='top', fontsize=12
+)
+
+ax.set_title("TradingView Flow — สัญญาณล่วงหน้าและสถิติจริง", color='white', fontsize=14)
+plt.tight_layout()
+st.pyplot(fig)
