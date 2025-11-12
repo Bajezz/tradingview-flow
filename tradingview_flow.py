@@ -1,77 +1,186 @@
 import streamlit as st
 import matplotlib.pyplot as plt
 import numpy as np
-import cv2
-import pytesseract
 from PIL import Image
+import io
 
+# ==============================
+# 📊 TradingView Flow — วิเคราะห์และพยากรณ์ + รองรับวางภาพ (Ctrl+V)
+# ==============================
 
-st.sidebar.header("🖼️ อ่านข้อมูลจากภาพ")
-uploaded_file = st.sidebar.file_uploader("อัปโหลดภาพตารางผล (PNG/JPG):", type=["png", "jpg", "jpeg"])
+st.set_page_config(layout="wide")
+st.title("📊 TradingView Flow — ระบบสัญญาณและสถิติจริง (ล่วงหน้า)")
+
+# ==============================
+# 🖼️ ส่วนอัปโหลด/วางภาพ (Ctrl+V)
+# ==============================
+st.sidebar.header("🖼️ อัปโหลดหรือวางภาพได้เลย (Ctrl+V)")
+uploaded_file = st.sidebar.file_uploader("วางหรืออัปโหลดภาพ:", type=["png", "jpg", "jpeg"])
 
 if uploaded_file is not None:
-    image = Image.open(uploaded_file).convert("RGB")
-    img_np = np.array(image)
-    img_cv = cv2.cvtColor(img_np, cv2.COLOR_RGB2BGR)
+    image = Image.open(uploaded_file)
+    st.sidebar.image(image, caption="ภาพที่อัปโหลด", use_column_width=True)
 
-    st.image(image, caption="📸 ภาพที่อัปโหลด", use_column_width=True)
+    # >>> จุดต่อ OCR / การอ่านค่าจากภาพ <<<
+    # เช่น ส่งให้ฟังก์ชันอ่านตัวเลขและสีออกจากภาพ (ยังไม่ implement)
+    # results = extract_numbers_and_colors(image)
+    st.sidebar.info("📌 ภาพถูกโหลดเรียบร้อย (รอระบบอ่านค่าจากภาพ)")
 
-    # --- ตรวจจับวงกลม ---
-    gray = cv2.cvtColor(img_cv, cv2.COLOR_BGR2GRAY)
-    gray = cv2.medianBlur(gray, 5)
-    circles = cv2.HoughCircles(gray, cv2.HOUGH_GRADIENT, dp=1.2, minDist=20,
-                               param1=100, param2=20, minRadius=10, maxRadius=40)
+# ==============================
+# 📥 Input ข้อมูลแบบ manual (สำรอง)
+# ==============================
+st.subheader("🧮 ป้อนข้อมูลด้วยตนเอง (ใช้เมื่อไม่ได้อัปโหลดภาพ)")
 
-    values_detected, colors_detected = [], []
+values_input = st.text_area("กรอกค่าตัวเลข:", "9 9 6 8 8 8 8 8 8 7 6 9 6 8 9 4 6 5 8 9 2 9 6 1 5")
+colors_input = st.text_area("กรอกสี (b=blue, r=red, g=green):", "b r b r b b b b r b r r b r r r b b b r r r b g b")
 
-    if circles is not None:
-        circles = np.uint16(np.around(circles[0, :]))
-        detected_data = []
+try:
+    values = [float(x) for x in values_input.split() if x.strip()]
+except ValueError:
+    st.error("❌ กรุณากรอกค่าตัวเลขให้ถูกต้อง")
+    st.stop()
 
-        for (x, y, r) in circles:
-            # Crop วงกลมเฉพาะบริเวณ
-            crop = img_cv[y - r:y + r, x - r:x + r]
-            if crop.size == 0:
-                continue
+colors_raw = [c for c in colors_input.split() if c.strip()]
+if len(colors_raw) < len(values):
+    colors_raw += ["gray"] * (len(values) - len(colors_raw))
+elif len(colors_raw) > len(values):
+    colors_raw = colors_raw[:len(values)]
 
-            # อ่านตัวเลขในวงกลม
-            num = pytesseract.image_to_string(crop, config="--psm 10 digits").strip()
-            if not num.isdigit():
-                continue
+color_map = {'b': 'royalblue', 'r': 'crimson', 'g': 'limegreen'}
+colors = [color_map.get(c.lower(), 'gray') for c in colors_raw]
 
-            # วิเคราะห์สีโดยดูค่าเฉลี่ยรอบขอบ
-            border_color = np.mean([
-                img_cv[y - r, x], img_cv[y + r, x],
-                img_cv[y, x - r], img_cv[y, x + r]
-            ], axis=0)
+if len(values) < 3:
+    st.warning("ต้องมีข้อมูลอย่างน้อย 3 ค่าเพื่อวิเคราะห์")
+    st.stop()
 
-            b, g, r_c = border_color
-            if r_c > 150 and r_c > g and r_c > b:
-                color = 'r'
-            elif b > 150 and b > g and b > r_c:
-                color = 'b'
-            elif g > 150 and g > r_c and g > b:
-                color = 'g'
-            else:
-                color = 'gray'
+# ==============================
+# 🧠 ประมวลผลกราฟและสัญญาณ
+# ==============================
+if "signals" not in st.session_state:
+    st.session_state.signals = []
 
-            detected_data.append((x, y, int(num), color))
+bar_width = 0.8
+scale = 0.5
+tops, bottoms = [], []
 
-        # --- เรียงจากซ้ายไปขวา, บนลงล่าง ---
-        detected_data.sort(key=lambda c: (c[0] // 100, c[1]))
-
-        values_detected = [d[2] for d in detected_data]
-        colors_detected = [d[3] for d in detected_data]
-
-        st.success("✅ อ่านข้อมูลจากภาพสำเร็จ!")
-        st.write("**ค่าที่อ่านได้:**", values_detected)
-        st.write("**สีที่อ่านได้:**", colors_detected)
-
-        # ใส่ค่าแทน input เดิม
-        values_input = " ".join(map(str, values_detected))
-        colors_input = " ".join(colors_detected)
-
+for i, (v, c) in enumerate(zip(values, colors)):
+    height = v * scale
+    if i == 0:
+        bottom, top = 0.0, height
     else:
-        st.error("❌ ไม่พบวงกลมในภาพ — ลองใช้ภาพที่ชัดกว่านี้")
+        prev_color = colors[i - 1]
+        prev_top, prev_bottom = tops[-1], bottoms[-1]
+        if c == 'royalblue':
+            bottom = prev_top if prev_color == 'royalblue' else prev_bottom
+            top = bottom + height
+        elif c == 'crimson':
+            top = prev_top if prev_color == 'royalblue' else prev_bottom
+            bottom = top - height
+        elif c == 'limegreen':
+            bottom = prev_top if prev_color in ['royalblue', 'limegreen'] else prev_bottom
+            top = bottom + height * 1.2
+        else:
+            bottom, top = prev_bottom, prev_top
+    tops.append(top)
+    bottoms.append(bottom)
 
+midpoints = [(t + b) / 2.0 for t, b in zip(tops, bottoms)]
 
+# สร้างสัญญาณย้อนหลัง
+for i in range(1, len(values) - 1):
+    if values[i - 1] > values[i] < values[i + 1]:
+        if not any(s["index"] == i for s in st.session_state.signals):
+            st.session_state.signals.append({"index": i, "type": "up", "correct": None})
+    elif values[i - 1] < values[i] > values[i + 1]:
+        if not any(s["index"] == i for s in st.session_state.signals):
+            st.session_state.signals.append({"index": i, "type": "down", "correct": None})
+
+# ความแม่นย้อนหลัง
+for s in st.session_state.signals:
+    i = s["index"]
+    if i < len(values) - 1:
+        future_move = values[i + 1] - values[i]
+        if s["type"] == "up":
+            s["correct"] = future_move > 0
+        elif s["type"] == "down":
+            s["correct"] = future_move < 0
+
+up_acc_list = [s["correct"] for s in st.session_state.signals if s["type"] == "up" and s["correct"] is not None]
+down_acc_list = [s["correct"] for s in st.session_state.signals if s["type"] == "down" and s["correct"] is not None]
+up_acc = (sum(up_acc_list) / len(up_acc_list) * 100) if up_acc_list else 0
+down_acc = (sum(down_acc_list) / len(down_acc_list) * 100) if down_acc_list else 0
+
+# พยากรณ์แนวโน้มถัดไป
+lookback = min(len(values), 6)
+x = np.arange(lookback)
+y = np.array(values[-lookback:])
+a, b = np.polyfit(x, y, 1)
+next_value = a * lookback + b
+predicted_dir = "up" if next_value > y[-1] else "down"
+
+# ตรวจสัญญาณล่วงหน้า
+anticipate_signal = None
+if len(values) >= 3:
+    last3 = values[-3:]
+    if last3[0] > last3[1] < last3[2]:
+        anticipate_signal = "up"
+    elif last3[0] < last3[1] > last3[2]:
+        anticipate_signal = "down"
+
+# ==============================
+# 📈 วาดกราฟ
+# ==============================
+fig, ax = plt.subplots(figsize=(14, 6))
+fig.patch.set_facecolor('#0e1117')
+ax.set_facecolor('#0e1117')
+
+for i, (top, bottom, c) in enumerate(zip(tops, bottoms, colors)):
+    ax.add_patch(plt.Rectangle((i - bar_width / 2, bottom),
+                               bar_width, top - bottom,
+                               color=c, ec='white', lw=0.5, alpha=0.9))
+
+ax.plot(range(len(midpoints)), midpoints, color='white', linewidth=0.8, alpha=0.4)
+
+for s in st.session_state.signals:
+    i = s["index"]
+    if i < len(midpoints):
+        if s["type"] == "up":
+            ax.annotate('↑', xy=(i, midpoints[i]), xytext=(i, midpoints[i] - 0.35),
+                        color='lime', ha='center', fontsize=16, fontweight='bold')
+        elif s["type"] == "down":
+            ax.annotate('↓', xy=(i, midpoints[i]), xytext=(i, midpoints[i] + 0.35),
+                        color='red', ha='center', fontsize=16, fontweight='bold')
+
+# แสดงสัญญาณล่วงหน้า
+if anticipate_signal:
+    i = len(values) - 1
+    if anticipate_signal == "up":
+        ax.annotate('↑', xy=(i, midpoints[i]), xytext=(i, midpoints[i] - 0.5),
+                    color='cyan', ha='center', fontsize=20, fontweight='bold', alpha=0.8)
+    elif anticipate_signal == "down":
+        ax.annotate('↓', xy=(i, midpoints[i]), xytext=(i, midpoints[i] + 0.5),
+                    color='orange', ha='center', fontsize=20, fontweight='bold', alpha=0.8)
+
+# พยากรณ์แท่งถัดไป
+ax.annotate('↑' if predicted_dir == "up" else '↓',
+            xy=(len(values), midpoints[-1]),
+            xytext=(len(values), midpoints[-1] + (0.5 if predicted_dir == "up" else -0.5)),
+            color='lime' if predicted_dir == "up" else 'red',
+            ha='center', fontsize=22, fontweight='bold', alpha=0.7)
+
+# ตกแต่งกราฟ
+ax.set_xlim(-0.5, len(values) + 0.5)
+ax.set_xticks(range(len(values)))
+ax.set_xticklabels([str(i + 1) for i in range(len(values))], color='white', fontsize=9)
+ax.tick_params(axis='x', colors='white')
+ax.set_yticks([])
+for spine in ax.spines.values():
+    spine.set_edgecolor('#2a2f36')
+
+ax.text(len(values) - 1, max(tops) * 1.05,
+        f"📈 Up: {up_acc:.1f}%   📉 Down: {down_acc:.1f}%",
+        color='white', ha='right', va='top', fontsize=12)
+
+ax.set_title("TradingView Flow — สัญญาณล่วงหน้าและสถิติจริง", color='white', fontsize=14)
+plt.tight_layout()
+st.pyplot(fig)
