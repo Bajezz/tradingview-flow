@@ -1,7 +1,10 @@
+import streamlit as st
+import matplotlib.pyplot as plt
+import numpy as np
 import cv2
 import pytesseract
 from PIL import Image
-import numpy as np
+
 
 st.sidebar.header("🖼️ อ่านข้อมูลจากภาพ")
 uploaded_file = st.sidebar.file_uploader("อัปโหลดภาพตารางผล (PNG/JPG):", type=["png", "jpg", "jpeg"])
@@ -70,4 +73,5 @@ if uploaded_file is not None:
 
     else:
         st.error("❌ ไม่พบวงกลมในภาพ — ลองใช้ภาพที่ชัดกว่านี้")
+
 
