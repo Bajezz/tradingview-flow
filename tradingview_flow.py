@@ -12,23 +12,34 @@ st.set_page_config(layout="wide")
 st.title("📊 TradingView Flow — ระบบสัญญาณและสถิติจริง (ล่วงหน้า)")
 
 # ==============================
-# 🖼️ ส่วนอัปโหลด/วางภาพ (Ctrl+V)
+# 🖼️ ส่วนอัปโหลดหรือวางภาพ (Ctrl+V)
 # ==============================
-st.sidebar.header("🖼️ อัปโหลดหรือวางภาพได้เลย (Ctrl+V)")
+st.sidebar.header("🖼️ อัปโหลดหรือวางภาพได้เลย (Ctrl+V / Drag & Drop)")
 
-uploaded_file = st.sidebar.file_uploader("วางหรืออัปโหลดภาพ:", type=["png", "jpg", "jpeg"])
+uploaded_file = st.sidebar.file_uploader(
+    "วางหรืออัปโหลดภาพ:",
+    type=["png", "jpg", "jpeg"],
+    accept_multiple_files=False
+)
 
+# รองรับวางภาพด้วย Ctrl+V (Streamlit จะมองเป็น file upload อัตโนมัติ)
 if uploaded_file is not None:
-    # แปลงภาพให้อ่านได้ด้วย PIL
     image = Image.open(uploaded_file)
-    st.sidebar.image(image, caption="ภาพที่อัปโหลด", use_column_width=True)
+    st.sidebar.image(image, caption="📸 ภาพที่อัปโหลด", use_column_width=True)
+    st.sidebar.success("✅ โหลดภาพสำเร็จ — พร้อมสำหรับอ่านข้อมูลจากภาพ")
 
-    # >>> จุดต่อ OCR / การอ่านค่าจากภาพ <<<
-    # ตัวอย่าง: results = extract_numbers_and_colors(image)
-    st.sidebar.info("📌 ภาพถูกโหลดเรียบร้อย (รอระบบอ่านค่าจากภาพ)")
+    # ==============================
+    # 🔍 จุดต่อ OCR / การอ่านค่าจากภาพ (ในอนาคต)
+    # ==============================
+    st.sidebar.info("📌 ยังไม่มี OCR — แต่ระบบพร้อมต่อกับฟังก์ชันอ่านค่าจากภาพ เช่น easyocr หรือ tesseract")
+    # ตัวอย่าง (ในอนาคต):
+    # import easyocr
+    # reader = easyocr.Reader(['en'])
+    # result = reader.readtext(np.array(image))
+    # st.write(result)
 
 # ==============================
-# 📥 Input ข้อมูลแบบ manual (สำรอง)
+# 📥 ป้อนข้อมูลด้วยตนเอง (สำรอง)
 # ==============================
 st.subheader("🧮 ป้อนข้อมูลด้วยตนเอง (ใช้เมื่อไม่ได้อัปโหลดภาพ)")
 
@@ -87,7 +98,9 @@ for i, (v, c) in enumerate(zip(values, colors)):
 
 midpoints = [(t + b) / 2.0 for t, b in zip(tops, bottoms)]
 
-# สร้างสัญญาณย้อนหลัง
+# ==============================
+# 🔺 สร้างสัญญาณย้อนหลัง
+# ==============================
 for i in range(1, len(values) - 1):
     if values[i - 1] > values[i] < values[i + 1]:
         if not any(s["index"] == i for s in st.session_state.signals):
@@ -111,7 +124,9 @@ down_acc_list = [s["correct"] for s in st.session_state.signals if s["type"] == 
 up_acc = (sum(up_acc_list) / len(up_acc_list) * 100) if up_acc_list else 0
 down_acc = (sum(down_acc_list) / len(down_acc_list) * 100) if down_acc_list else 0
 
-# พยากรณ์แนวโน้มถัดไป
+# ==============================
+# 🔮 พยากรณ์แนวโน้มถัดไป
+# ==============================
 lookback = min(len(values), 6)
 x = np.arange(lookback)
 y = np.array(values[-lookback:])
@@ -152,7 +167,7 @@ for s in st.session_state.signals:
             ax.annotate('↓', xy=(i, midpoints[i]), xytext=(i, midpoints[i] + 0.35),
                         color='red', ha='center', fontsize=16, fontweight='bold')
 
-# แสดงสัญญาณล่วงหน้า
+# สัญญาณล่วงหน้า
 if anticipate_signal:
     i = len(values) - 1
     if anticipate_signal == "up":
@@ -160,28 +175,4 @@ if anticipate_signal:
                     color='cyan', ha='center', fontsize=20, fontweight='bold', alpha=0.8)
     elif anticipate_signal == "down":
         ax.annotate('↓', xy=(i, midpoints[i]), xytext=(i, midpoints[i] + 0.5),
-                    color='orange', ha='center', fontsize=20, fontweight='bold', alpha=0.8)
-
-# พยากรณ์แท่งถัดไป
-ax.annotate('↑' if predicted_dir == "up" else '↓',
-            xy=(len(values), midpoints[-1]),
-            xytext=(len(values), midpoints[-1] + (0.5 if predicted_dir == "up" else -0.5)),
-            color='lime' if predicted_dir == "up" else 'red',
-            ha='center', fontsize=22, fontweight='bold', alpha=0.7)
-
-# ตกแต่งกราฟ
-ax.set_xlim(-0.5, len(values) + 0.5)
-ax.set_xticks(range(len(values)))
-ax.set_xticklabels([str(i + 1) for i in range(len(values))], color='white', fontsize=9)
-ax.tick_params(axis='x', colors='white')
-ax.set_yticks([])
-for spine in ax.spines.values():
-    spine.set_edgecolor('#2a2f36')
-
-ax.text(len(values) - 1, max(tops) * 1.05,
-        f"📈 Up: {up_acc:.1f}%   📉 Down: {down_acc:.1f}%",
-        color='white', ha='right', va='top', fontsize=12)
-
-ax.set_title("TradingView Flow — สัญญาณล่วงหน้าและสถิติจริง", color='white', fontsize=14)
-plt.tight_layout()
-st.pyplot(fig)
+                    colo
