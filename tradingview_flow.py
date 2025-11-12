@@ -3,17 +3,19 @@ import matplotlib.pyplot as plt
 from PIL import Image
 
 st.set_page_config(layout="wide")
-st.title("📊 TradingView Flow — วิเคราะห์สัญญาณจากแท่งถัดไป (b=ขึ้น / r=ลง / g=เสมอ)")
+st.title("📊 TradingView Flow — วิเคราะห์สัญญาณจากแท่งถัดไป (อัปเดตเรียลไทม์)")
 
 # ==============================
 # 📥 Input
 # ==============================
-st.subheader("🧮 ป้อนข้อมูล")
-
 values_input = st.text_area("ค่าตัวเลข:", "9 8 9 8 9 7 9 9 9 6 5 7 6 8 1 6 7 6 9 7 7 9 8 9")
 colors_input = st.text_area("สีแท่ง (b=น้ำเงิน, r=แดง, g=เขียว=เสมอ):", "r r b r r r b b r b r b b b g b r r b b r r b r")
 
-# แปลงข้อมูล
+# ถ้ายังไม่มีข้อมูลเลย ก็ไม่หยุด แค่เตือน
+if not values_input.strip():
+    st.info("🕐 กรุณากรอกค่าตัวเลขเพื่อเริ่มวิเคราะห์...")
+    st.stop()
+
 try:
     values = [float(x) for x in values_input.split() if x.strip()]
 except:
@@ -21,6 +23,8 @@ except:
     st.stop()
 
 colors_raw = [c.lower() for c in colors_input.split() if c.strip()]
+
+# ถ้ายังพิมพ์สีไม่ครบ ระบบจะเติม g (เสมอ)
 if len(colors_raw) < len(values):
     colors_raw += ["g"] * (len(values) - len(colors_raw))
 elif len(colors_raw) > len(values):
@@ -30,7 +34,7 @@ color_map = {'b': 'royalblue', 'r': 'crimson', 'g': 'limegreen'}
 colors = [color_map.get(c, 'gray') for c in colors_raw]
 
 # ==============================
-# คำนวณตำแหน่ง flow (แท่งต่อเนื่อง)
+# flow chart ต่อเนื่อง
 # ==============================
 bar_width = 0.8
 scale = 0.5
@@ -49,7 +53,7 @@ for i, (v, c) in enumerate(zip(values, colors_raw)):
         elif c == "r":
             top = prev_bottom
             bottom = top - height
-        else:  # g
+        else:
             bottom, top = prev_bottom, prev_top
     tops.append(top)
     bottoms.append(bottom)
@@ -57,7 +61,7 @@ for i, (v, c) in enumerate(zip(values, colors_raw)):
 midpoints = [(t + b) / 2 for t, b in zip(tops, bottoms)]
 
 # ==============================
-# หา signal จุดกลับตัว (local min/max)
+# หา signal จุดกลับตัว
 # ==============================
 signals = []
 for i in range(1, len(values) - 1):
@@ -67,7 +71,7 @@ for i in range(1, len(values) - 1):
         signals.append({"index": i, "type": "down"})
 
 # ==============================
-# ประเมินผลจาก "แท่งถัดไป"
+# ประเมินจากแท่งถัดไป
 # ==============================
 for s in signals:
     i = s["index"]
@@ -77,19 +81,9 @@ for s in signals:
 
     next_color = colors_raw[i + 1]
     if s["type"] == "up":
-        if next_color == "b":
-            s["result"] = "win"
-        elif next_color == "r":
-            s["result"] = "lose"
-        else:
-            s["result"] = "neutral"
+        s["result"] = "win" if next_color == "b" else "lose" if next_color == "r" else "neutral"
     elif s["type"] == "down":
-        if next_color == "r":
-            s["result"] = "win"
-        elif next_color == "b":
-            s["result"] = "lose"
-        else:
-            s["result"] = "neutral"
+        s["result"] = "win" if next_color == "r" else "lose" if next_color == "b" else "neutral"
 
 # ==============================
 # สถิติ
@@ -97,8 +91,6 @@ for s in signals:
 wins = sum(1 for s in signals if s["result"] == "win")
 losses = sum(1 for s in signals if s["result"] == "lose")
 draws = sum(1 for s in signals if s["result"] == "neutral")
-
-# streak แพ้
 lose_streaks, streak = [], 0
 for s in signals:
     if s["result"] == "lose":
@@ -109,12 +101,11 @@ for s in signals:
         streak = 0
 if streak > 0:
     lose_streaks.append(streak)
-
 max_lose_streak = max(lose_streaks) if lose_streaks else 0
 accuracy = (wins / (wins + losses) * 100) if (wins + losses) else 0
 
 # ==============================
-# วาดกราฟ Flow
+# วาดกราฟ
 # ==============================
 fig, ax = plt.subplots(figsize=(14, 6))
 fig.patch.set_facecolor('#0e1117')
@@ -123,7 +114,6 @@ ax.set_facecolor('#0e1117')
 for i, (b, t, c) in enumerate(zip(bottoms, tops, colors)):
     ax.add_patch(plt.Rectangle((i - bar_width/2, b), bar_width, t - b, color=c, ec='white', lw=0.5))
 
-# วาดสัญญาณ (↑↓) และกรอบ win/lose
 for s in signals:
     i = s["index"]
     mid_y = midpoints[i]
@@ -131,8 +121,6 @@ for s in signals:
         ax.annotate('↑', (i, mid_y - 0.3), color='cyan', ha='center', fontsize=14, fontweight='bold')
     else:
         ax.annotate('↓', (i, mid_y + 0.3), color='orange', ha='center', fontsize=14, fontweight='bold')
-
-    # สีกรอบผลลัพธ์
     color_box = {"win": "lime", "lose": "red", "neutral": "yellow"}[s["result"]]
     ax.add_patch(plt.Rectangle((i - bar_width/2, bottoms[i]), bar_width, tops[i] - bottoms[i], fill=False, ec=color_box, lw=2))
 
@@ -143,30 +131,16 @@ ax.set_xticklabels([str(i + 1) for i in range(len(values))], color='white')
 ax.set_yticks([])
 for s in ax.spines.values():
     s.set_color('#333')
-
-ax.set_title("📉 Flow Graph — กรอบสีคือผลลัพธ์ (เขียว=ชนะ, แดง=แพ้, เหลือง=เสมอ)", color='white')
+ax.set_title("📈 Flow Graph — กรอบสีคือผลลัพธ์ (เขียว=ชนะ, แดง=แพ้, เหลือง=เสมอ)", color='white')
 plt.tight_layout()
 st.pyplot(fig)
 
 # ==============================
 # แสดงสถิติ
 # ==============================
-st.markdown("---")
-st.markdown("### 📈 ผลลัพธ์สรุป")
+st.markdown("### 📊 สรุปผล")
 st.write(f"✅ ชนะทั้งหมด: **{wins}**")
 st.write(f"❌ แพ้ทั้งหมด: **{losses}**")
 st.write(f"⚪ เสมอทั้งหมด: **{draws}**")
 st.write(f"🎯 ความแม่นยำ (ไม่รวมเสมอ): **{accuracy:.1f}%**")
 st.write(f"🔥 แพ้ติดกันยาวสุด: **{max_lose_streak} ไม้**")
-
-# ==============================
-# ตารางผลแต่ละสัญญาณ
-# ==============================
-rows = []
-for s in signals:
-    rows.append({
-        "แท่งที่": s["index"] + 1,
-        "ประเภท": s["type"],
-        "ผลลัพธ์": s["result"]
-    })
-st.table(rows)
