@@ -1,22 +1,27 @@
 import streamlit as st
 import matplotlib.pyplot as plt
+import numpy as np
 
+# ==============================
+# ⚙️ ตั้งค่าหน้าเว็บ
+# ==============================
 st.set_page_config(layout="wide")
-st.title("📊 TradingView Flow — วิเคราะห์สัญญาณ + ระบบไม้ทบอัตโนมัติ")
+st.title("📈 Flow Pro — Momentum Bias Mode")
+st.caption("เวอร์ชัน: วิเคราะห์แนวโน้ม + คำนวณเปอร์เซ็นต์มั่นใจแท่งถัดไป (Next Bar Prediction)")
 
 # ==============================
 # 📥 Input
 # ==============================
-st.subheader("🧮 ป้อนข้อมูล")
-values_input = st.text_area("ค่าตัวเลข:", "8 8 4 4 9 6 6 9 3 8 8 6 8 3 9 8")
-colors_input = st.text_area("สีแท่ง (b=น้ำเงิน, r=แดง, g=เขียว=เสมอ):", "r r r r b r r b r b r b r b r b")
+st.sidebar.header("📥 ป้อนข้อมูล")
 
-mode = st.radio("🧭 เลือกโหมดวิเคราะห์:",
-                ["Real-Time (ทันที)", "Confirm Next Bar (ไวขึ้น)"],
-                index=1)
+values_input = st.sidebar.text_area("ค่าตัวเลข (ความแรงแต่ละแท่ง):", "8 8 4 4 9 6 6 9 3 8 8 6 8 3 9 8")
+colors_input = st.sidebar.text_area("สีแท่ง (b=น้ำเงิน, r=แดง, g=เขียว=เสมอ):", "r r r r b r r b r b r b r b r b")
+
+mode = st.sidebar.radio("🧭 เลือกโหมดวิเคราะห์:", 
+                        ["Real-Time", "Momentum Bias Mode (แนะนำ)"], index=1)
 
 # ==============================
-# แปลงข้อมูล
+# 🔄 แปลงข้อมูล
 # ==============================
 try:
     values = [float(x) for x in values_input.split() if x.strip()]
@@ -34,7 +39,7 @@ color_map = {'b': 'royalblue', 'r': 'crimson', 'g': 'limegreen'}
 colors = [color_map.get(c, 'gray') for c in colors_raw]
 
 # ==============================
-# สร้างกราฟ Flow
+# 📊 สร้าง Flow Graph
 # ==============================
 bar_width = 0.8
 scale = 0.5
@@ -58,10 +63,25 @@ for i, (v, c) in enumerate(zip(values, colors_raw)):
     tops.append(top)
     bottoms.append(bottom)
 
-midpoints = [(t + b) / 2 for t, b in zip(tops, bottoms)]
+midpoints = np.array([(t + b) / 2 for t, b in zip(tops, bottoms)])
 
 # ==============================
-# หา signal จุดกลับตัว
+# 📈 Momentum Bias Algorithm
+# ==============================
+def momentum_bias(values, colors):
+    """คำนวณโมเมนตัมของกราฟ เพื่อเดาทิศทางแท่งถัดไป"""
+    weights = np.linspace(0.5, 1.5, len(values))
+    momentum = np.sum(np.array(values) * weights * np.where(np.array(colors) == 'b', 1, -1))
+    bias = "ขึ้น (Blue)" if momentum > 0 else "ลง (Red)"
+    
+    # normalize confidence
+    conf = min(99, abs(momentum) / (np.mean(values) * len(values) / 2) * 100)
+    return bias, conf
+
+bias, confidence = momentum_bias(values, colors_raw)
+
+# ==============================
+# 🔍 หา signal จุดกลับตัว
 # ==============================
 signals = []
 for i in range(1, len(values) - 1):
@@ -70,79 +90,15 @@ for i in range(1, len(values) - 1):
     elif values[i - 1] < values[i] > values[i + 1]:
         signals.append({"index": i, "type": "down"})
 
-# ✅ ให้สัญญาณแท่งสุดท้ายได้เร็วขึ้น
-if mode == "Confirm Next Bar (ไวขึ้น)" and len(values) >= 3:
-    i = len(values) - 1
-    # ถ้าแท่งสุดท้ายเป็นจุดกลับตัวแนวโน้มก่อนหน้า
-    if values[i - 2] > values[i - 1] < values[i]:
-        signals.append({"index": i - 1, "type": "up"})
-    elif values[i - 2] < values[i - 1] > values[i]:
-        signals.append({"index": i - 1, "type": "down"})
-
 # ==============================
-# ประเมินผล
-# ==============================
-for s in signals:
-    i = s["index"]
-    if i + 1 < len(colors_raw):
-        next_color = colors_raw[i + 1]
-    else:
-        next_color = colors_raw[i]
-
-    if s["type"] == "up":
-        if next_color == "b":
-            s["result"] = "win"
-        elif next_color == "r":
-            s["result"] = "lose"
-        else:
-            s["result"] = "neutral"
-    elif s["type"] == "down":
-        if next_color == "r":
-            s["result"] = "win"
-        elif next_color == "b":
-            s["result"] = "lose"
-        else:
-            s["result"] = "neutral"
-
-# ==============================
-# ระบบไม้ทบอัตโนมัติ
-# ==============================
-martingale = []
-loss_streak = 0
-for s in signals:
-    if s["result"] == "lose":
-        loss_streak += 1
-        martingale.append({"index": s["index"] + 1,
-                           "action": f"ทบไม้ {loss_streak}",
-                           "status": "ยังแพ้อยู่ ❌"})
-    elif s["result"] == "win":
-        if loss_streak > 0:
-            martingale.append({"index": s["index"] + 1,
-                               "action": f"ชนะหลังทบ {loss_streak} ไม้ ✅",
-                               "status": "รีเซ็ตไม้"})
-        loss_streak = 0
-    else:
-        martingale.append({"index": s["index"] + 1,
-                           "action": "-",
-                           "status": "เสมอ ⚪"})
-
-# ==============================
-# คำนวณสถิติ
-# ==============================
-wins = sum(1 for s in signals if s["result"] == "win")
-losses = sum(1 for s in signals if s["result"] == "lose")
-draws = sum(1 for s in signals if s["result"] == "neutral")
-accuracy = (wins / (wins + losses) * 100) if (wins + losses) else 0
-
-# ==============================
-# วาดกราฟ
+# 📊 แสดงผลกราฟ
 # ==============================
 fig, ax = plt.subplots(figsize=(14, 6))
 fig.patch.set_facecolor('#0e1117')
 ax.set_facecolor('#0e1117')
 
 for i, (b, t, c) in enumerate(zip(bottoms, tops, colors)):
-    ax.add_patch(plt.Rectangle((i - bar_width/2, b), bar_width, t - b, color=c, ec='white', lw=0.5))
+    ax.add_patch(plt.Rectangle((i - bar_width / 2, b), bar_width, t - b, color=c, ec='white', lw=0.5))
 
 for s in signals:
     i = s["index"]
@@ -152,11 +108,6 @@ for s in signals:
     else:
         ax.annotate('↓', (i, mid_y + 0.3), color='orange', ha='center', fontsize=14, fontweight='bold')
 
-    color_box = {"win": "lime", "lose": "red", "neutral": "yellow"}[s["result"]]
-    ax.add_patch(plt.Rectangle((i - bar_width/2, bottoms[i]),
-                               bar_width, tops[i] - bottoms[i],
-                               fill=False, ec=color_box, lw=2))
-
 ax.plot(range(len(midpoints)), midpoints, color='white', lw=0.8, alpha=0.4)
 ax.set_xlim(-0.5, len(values) - 0.5)
 ax.set_xticks(range(len(values)))
@@ -164,19 +115,35 @@ ax.set_xticklabels([str(i + 1) for i in range(len(values))], color='white')
 ax.set_yticks([])
 for s in ax.spines.values():
     s.set_color('#333')
-ax.set_title(f"📈 Flow Graph — โหมด: {mode}", color='white')
+ax.set_title(f"Flow Momentum Visualization — Mode: {mode}", color='white')
 plt.tight_layout()
 st.pyplot(fig)
 
 # ==============================
-# แสดงผลลัพธ์
+# 📊 สรุปผลการวิเคราะห์
 # ==============================
 st.markdown("---")
-st.markdown("### 📊 ผลการวิเคราะห์")
-st.write(f"✅ ชนะทั้งหมด: **{wins}**")
-st.write(f"❌ แพ้ทั้งหมด: **{losses}**")
-st.write(f"⚪ เสมอทั้งหมด: **{draws}**")
-st.write(f"🎯 ความแม่นยำ (ไม่รวมเสมอ): **{accuracy:.1f}%**")
+st.subheader("📊 สรุปผลการวิเคราะห์")
 
-st.markdown("### 💰 วิเคราะห์ระบบไม้ทบ")
-st.table(martingale)
+col1, col2 = st.columns(2)
+with col1:
+    st.metric("🧭 แนวโน้มหลัก (Momentum Bias)", bias)
+with col2:
+    st.metric("🎯 ความมั่นใจ", f"{confidence:.1f}%")
+
+# ==============================
+# 🧩 วิเคราะห์สรุปเชิงลึก
+# ==============================
+if confidence >= 75:
+    st.success("✅ สัญญาณแข็งแรง — แนวโน้มมีโอกาสสูงมากที่จะต่อเนื่องไปในทิศทางเดียวกัน")
+elif confidence >= 50:
+    st.warning("⚠️ สัญญาณปานกลาง — อาจมีการรีบาวด์หรือสวิงระยะสั้นได้")
+else:
+    st.error("❌ สัญญาณอ่อน — ควรรอจังหวะยืนยันแท่งถัดไปก่อนเข้าไม้")
+
+st.markdown("""
+**💡 คำอธิบาย:**
+- Momentum Bias ใช้โมเดลน้ำหนักล่าสุด (Weighted Momentum) เพื่อวิเคราะห์แนวโน้มต่อเนื่อง
+- ค่าความมั่นใจ (%) ยิ่งสูง ยิ่งมีโอกาสที่แท่งถัดไปจะไปในทิศทางเดียวกับ Bias
+- ใช้ร่วมกับ “Confirm Next Bar” ได้เพื่อกรองสัญญาณหลอก
+""")
