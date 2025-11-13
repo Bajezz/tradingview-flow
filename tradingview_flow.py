@@ -2,7 +2,7 @@ import streamlit as st
 import matplotlib.pyplot as plt
 
 st.set_page_config(layout="wide")
-st.title("📊 TradingView Flow — วิเคราะห์สัญญาณแบบ Confirm + Trend Filter")
+st.title("📊 TradingView Flow — วิเคราะห์สัญญาณ + ระบบไม้ทบอัตโนมัติ")
 
 # ==============================
 # 📥 Input
@@ -12,8 +12,8 @@ values_input = st.text_area("ค่าตัวเลข:", "8 8 4 4 9 6 6 9 3 8
 colors_input = st.text_area("สีแท่ง (b=น้ำเงิน, r=แดง, g=เขียว=เสมอ):", "r r r r b r r b r b r b r b r b")
 
 mode = st.radio("🧭 เลือกโหมดวิเคราะห์:",
-                ["Confirm Next Bar (ยืนยันแท่งถัดไป)", "Real-Time (ทันที)"],
-                index=0)
+                ["Real-Time (ทันที)", "Confirm Next Bar (ไวขึ้น)"],
+                index=1)
 
 # ==============================
 # แปลงข้อมูล
@@ -34,7 +34,7 @@ color_map = {'b': 'royalblue', 'r': 'crimson', 'g': 'limegreen'}
 colors = [color_map.get(c, 'gray') for c in colors_raw]
 
 # ==============================
-# สร้างแท่งกราฟ flow
+# สร้างกราฟ Flow
 # ==============================
 bar_width = 0.8
 scale = 0.5
@@ -61,69 +61,73 @@ for i, (v, c) in enumerate(zip(values, colors_raw)):
 midpoints = [(t + b) / 2 for t, b in zip(tops, bottoms)]
 
 # ==============================
-# หา signal จุดกลับตัว + Trend Filter
+# หา signal จุดกลับตัว
 # ==============================
 signals = []
 for i in range(1, len(values) - 1):
     if values[i - 1] > values[i] < values[i + 1]:
-        sig_type = "up"
+        signals.append({"index": i, "type": "up"})
     elif values[i - 1] < values[i] > values[i + 1]:
-        sig_type = "down"
-    else:
-        continue
+        signals.append({"index": i, "type": "down"})
 
-    # ---- Trend Filter ----
-    if i >= 5:
-        prev5 = colors_raw[i-5:i]
-        reds = prev5.count("r")
-        blues = prev5.count("b")
-
-        if sig_type == "up" and reds >= 3:
-            continue  # ขาลงแรง ห้ามออก up
-        if sig_type == "down" and blues >= 3:
-            continue  # ขาขึ้นแรง ห้ามออก down
-
-    signals.append({"index": i, "type": sig_type})
-
-# สัญญาณแบบ Real-Time
-if mode == "Real-Time (ทันที)" and len(values) >= 2:
+# ✅ ให้สัญญาณแท่งสุดท้ายได้เร็วขึ้น
+if mode == "Confirm Next Bar (ไวขึ้น)" and len(values) >= 3:
     i = len(values) - 1
-    if values[i - 1] > values[i]:
-        sig_type = "up"
-    elif values[i - 1] < values[i]:
-        sig_type = "down"
-    else:
-        sig_type = None
-    if sig_type:
-        if i >= 5:
-            prev5 = colors_raw[i-5:i]
-            reds = prev5.count("r")
-            blues = prev5.count("b")
-            if not ((sig_type == "up" and reds >= 3) or (sig_type == "down" and blues >= 3)):
-                signals.append({"index": i, "type": sig_type})
-        else:
-            signals.append({"index": i, "type": sig_type})
+    # ถ้าแท่งสุดท้ายเป็นจุดกลับตัวแนวโน้มก่อนหน้า
+    if values[i - 2] > values[i - 1] < values[i]:
+        signals.append({"index": i - 1, "type": "up"})
+    elif values[i - 2] < values[i - 1] > values[i]:
+        signals.append({"index": i - 1, "type": "down"})
 
 # ==============================
 # ประเมินผล
 # ==============================
 for s in signals:
     i = s["index"]
-    if mode == "Confirm Next Bar (ยืนยันแท่งถัดไป)":
-        if i + 1 >= len(colors_raw):
-            s["result"] = "neutral"
-            continue
+    if i + 1 < len(colors_raw):
         next_color = colors_raw[i + 1]
     else:
         next_color = colors_raw[i]
 
     if s["type"] == "up":
-        s["result"] = "win" if next_color == "b" else "lose" if next_color == "r" else "neutral"
+        if next_color == "b":
+            s["result"] = "win"
+        elif next_color == "r":
+            s["result"] = "lose"
+        else:
+            s["result"] = "neutral"
     elif s["type"] == "down":
-        s["result"] = "win" if next_color == "r" else "lose" if next_color == "b" else "neutral"
+        if next_color == "r":
+            s["result"] = "win"
+        elif next_color == "b":
+            s["result"] = "lose"
+        else:
+            s["result"] = "neutral"
 
 # ==============================
-# สถิติ
+# ระบบไม้ทบอัตโนมัติ
+# ==============================
+martingale = []
+loss_streak = 0
+for s in signals:
+    if s["result"] == "lose":
+        loss_streak += 1
+        martingale.append({"index": s["index"] + 1,
+                           "action": f"ทบไม้ {loss_streak}",
+                           "status": "ยังแพ้อยู่ ❌"})
+    elif s["result"] == "win":
+        if loss_streak > 0:
+            martingale.append({"index": s["index"] + 1,
+                               "action": f"ชนะหลังทบ {loss_streak} ไม้ ✅",
+                               "status": "รีเซ็ตไม้"})
+        loss_streak = 0
+    else:
+        martingale.append({"index": s["index"] + 1,
+                           "action": "-",
+                           "status": "เสมอ ⚪"})
+
+# ==============================
+# คำนวณสถิติ
 # ==============================
 wins = sum(1 for s in signals if s["result"] == "win")
 losses = sum(1 for s in signals if s["result"] == "lose")
@@ -143,11 +147,12 @@ for i, (b, t, c) in enumerate(zip(bottoms, tops, colors)):
 for s in signals:
     i = s["index"]
     mid_y = midpoints[i]
-    color_box = {"win": "lime", "lose": "red", "neutral": "yellow"}[s["result"]]
     if s["type"] == "up":
         ax.annotate('↑', (i, mid_y - 0.3), color='cyan', ha='center', fontsize=14, fontweight='bold')
     else:
         ax.annotate('↓', (i, mid_y + 0.3), color='orange', ha='center', fontsize=14, fontweight='bold')
+
+    color_box = {"win": "lime", "lose": "red", "neutral": "yellow"}[s["result"]]
     ax.add_patch(plt.Rectangle((i - bar_width/2, bottoms[i]),
                                bar_width, tops[i] - bottoms[i],
                                fill=False, ec=color_box, lw=2))
@@ -159,25 +164,19 @@ ax.set_xticklabels([str(i + 1) for i in range(len(values))], color='white')
 ax.set_yticks([])
 for s in ax.spines.values():
     s.set_color('#333')
-ax.set_title(f"📈 Flow Graph — {mode} + Trend Filter", color='white')
+ax.set_title(f"📈 Flow Graph — โหมด: {mode}", color='white')
 plt.tight_layout()
 st.pyplot(fig)
 
 # ==============================
-# สรุปผล
+# แสดงผลลัพธ์
 # ==============================
 st.markdown("---")
-st.markdown(f"### 📊 ผลการวิเคราะห์ ({mode} + Trend Filter)")
+st.markdown("### 📊 ผลการวิเคราะห์")
 st.write(f"✅ ชนะทั้งหมด: **{wins}**")
 st.write(f"❌ แพ้ทั้งหมด: **{losses}**")
 st.write(f"⚪ เสมอทั้งหมด: **{draws}**")
 st.write(f"🎯 ความแม่นยำ (ไม่รวมเสมอ): **{accuracy:.1f}%**")
 
-rows = []
-for s in signals:
-    rows.append({
-        "แท่งที่": s["index"] + 1,
-        "ประเภท": s["type"],
-        "ผลลัพธ์": s["result"]
-    })
-st.table(rows)
+st.markdown("### 💰 วิเคราะห์ระบบไม้ทบ")
+st.table(martingale)
